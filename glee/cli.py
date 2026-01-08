@@ -75,68 +75,99 @@ def stop():
     console.print("[yellow]Not implemented yet[/yellow]")
 
 
+def check_mcp_registration(project_path: str | None = None) -> bool:
+    """Check if Glee MCP server is registered in project's .claude/settings.local.json."""
+    import json
+    from pathlib import Path
+
+    if project_path is None:
+        project_path = os.getcwd()
+
+    # Project-local Claude settings
+    claude_settings = Path(project_path) / ".claude" / "settings.local.json"
+    if not claude_settings.exists():
+        return False
+
+    try:
+        with open(claude_settings) as f:
+            settings = json.load(f)
+        mcp_servers = settings.get("mcpServers", {})
+        return "glee" in mcp_servers
+    except Exception:
+        return False
+
+
 @app.command()
 def status():
-    """Show project status and connected agents."""
+    """Show Glee global status and current project status."""
     from glee.agents import registry
-    from glee.config import get_connected_agents, get_dispatch_config, get_project_config
+    from glee.config import get_connected_agents, get_project_config
 
+    # === Global Status ===
+    console.print(f"[bold]Glee v{get_version()}[/bold]")
+
+    # CLI availability
+    cli_agents = ["claude", "codex", "gemini"]
+    for i, cli_name in enumerate(cli_agents):
+        agent = registry.get(cli_name)
+        is_last_cli = i == len(cli_agents) - 1
+        prefix = "└─" if is_last_cli else "├─"
+        if agent and agent.is_available():
+            console.print(f"{prefix} {cli_name.title()} CLI: [green]found ✓[/green]")
+        else:
+            console.print(f"{prefix} {cli_name.title()} CLI: [dim]not found[/dim]")
+
+    console.print()
+
+    # === Project Status ===
     config = get_project_config()
     if not config:
-        console.print("[yellow]No project initialized. Run 'glee init' first.[/yellow]")
-        raise typer.Exit(1)
+        console.print("[dim]Current directory: not configured[/dim]")
+        return
 
     project = config.get("project", {})
-    console.print("[bold]Project Status[/bold]")
-    console.print(f"  Name: {project.get('name')}")
-    console.print(f"  ID: {project.get('id')}")
-    console.print(f"  Path: {project.get('path')}")
-    console.print()
+    console.print(f"[bold]Project: {project.get('name')}[/bold]")
+    console.print(f"├─ Path: {project.get('path')}")
 
-    # Show dispatch config
-    dispatch = get_dispatch_config()
-    console.print("[bold]Dispatch Strategy[/bold]")
-    console.print(f"  Coder: {dispatch.get('coder', 'first')}")
-    console.print(f"  Reviewer: {dispatch.get('reviewer', 'all')}")
-    console.print()
+    # MCP Server registration (project-local)
+    mcp_registered = check_mcp_registration()
+    mcp_status = "[green]registered ✓[/green]" if mcp_registered else "[dim]not registered[/dim]"
+    console.print(f"├─ MCP: {mcp_status}")
 
     # Show connected agents
     coders = get_connected_agents(role="coder")
     reviewers = get_connected_agents(role="reviewer")
     judges = get_connected_agents(role="judge")
 
-    if coders:
-        console.print("[bold]Coders[/bold]")
-        for c in coders:
-            cmd = c.get("command")
-            agent = registry.get(cmd) if cmd else None
-            available = "✓" if agent and agent.is_available() else "✗"
-            domain = ", ".join(c.get("domain", [])) or "general"
-            priority = c.get("priority", "-")
-            console.print(f"  [{available}] {c.get('name')} ({cmd}): {domain} (priority: {priority})")
-        console.print()
+    all_agents = []
+    for c in coders:
+        cmd = c.get("command")
+        agent = registry.get(cmd) if cmd else None
+        available = "✓" if agent and agent.is_available() else "✗"
+        domain = ", ".join(c.get("domain", [])) or "general"
+        all_agents.append(f"[{available}] {c.get('name')} (coder) → {domain}")
 
-    if reviewers:
-        console.print("[bold]Reviewers[/bold]")
-        for r in reviewers:
-            cmd = r.get("command")
-            agent = registry.get(cmd) if cmd else None
-            available = "✓" if agent and agent.is_available() else "✗"
-            focus = ", ".join(r.get("focus", [])) or "general"
-            console.print(f"  [{available}] {r.get('name')} ({cmd}): {focus}")
-        console.print()
+    for r in reviewers:
+        cmd = r.get("command")
+        agent = registry.get(cmd) if cmd else None
+        available = "✓" if agent and agent.is_available() else "✗"
+        focus = ", ".join(r.get("focus", [])) or "general"
+        all_agents.append(f"[{available}] {r.get('name')} (reviewer) → {focus}")
 
-    if judges:
-        console.print("[bold]Judges[/bold]")
-        for j in judges:
-            cmd = j.get("command")
-            agent = registry.get(cmd) if cmd else None
-            available = "✓" if agent and agent.is_available() else "✗"
-            console.print(f"  [{available}] {j.get('name')} ({cmd}): arbitrates disputes")
-        console.print()
+    for j in judges:
+        cmd = j.get("command")
+        agent = registry.get(cmd) if cmd else None
+        available = "✓" if agent and agent.is_available() else "✗"
+        all_agents.append(f"[{available}] {j.get('name')} (judge) → arbitration")
 
-    if not coders and not reviewers and not judges:
-        console.print("[yellow]No agents connected. Use 'glee connect <command> --role <role>' to add agents.[/yellow]")
+    if all_agents:
+        console.print("└─ Agents:")
+        for i, agent_line in enumerate(all_agents):
+            is_last = i == len(all_agents) - 1
+            prefix = "   └─" if is_last else "   ├─"
+            console.print(f"{prefix} {agent_line}")
+    else:
+        console.print("└─ Agents: [dim]none connected[/dim]")
 
 
 @app.command()
@@ -250,7 +281,7 @@ def disconnect(
 def init(
     new_id: bool = typer.Option(False, "--new-id", help="Generate new project ID"),
 ):
-    """Initialize .glee/config.yml with new project ID."""
+    """Initialize Glee in current directory. Idempotent - safe to run multiple times."""
     import os
     import uuid
 
@@ -264,6 +295,12 @@ def init(
     console.print(f"  ID: {config['project']['id']}")
     console.print(f"  Path: {config['project']['path']}")
     console.print(f"  Config: .glee/config.yml")
+
+    # Show MCP registration status
+    if config.get("_mcp_registered"):
+        console.print(f"  MCP: [green]registered with Claude[/green]")
+    else:
+        console.print(f"  MCP: [dim]already registered[/dim]")
 
 
 @app.command()

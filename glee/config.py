@@ -99,8 +99,59 @@ def _add_to_gitignore(project_path: str, entry: str) -> None:
         f.write(f"{entry}\n")
 
 
+def register_mcp_server(project_path: str) -> bool:
+    """Register Glee as an MCP server in project's .claude/settings.local.json. Idempotent.
+
+    Returns True if registration was added, False if already registered.
+    """
+    import json
+    import shutil
+
+    project_path = Path(project_path)
+    claude_dir = project_path / ".claude"
+    claude_dir.mkdir(parents=True, exist_ok=True)
+
+    settings_path = claude_dir / "settings.local.json"
+
+    # Load existing settings or create empty
+    if settings_path.exists():
+        with open(settings_path) as f:
+            settings = json.load(f)
+    else:
+        settings = {}
+
+    # Initialize mcpServers if not present
+    if "mcpServers" not in settings:
+        settings["mcpServers"] = {}
+
+    # Check if already registered
+    if "glee" in settings["mcpServers"]:
+        return False  # Already registered
+
+    # Find glee executable
+    glee_path = shutil.which("glee")
+    if not glee_path:
+        # Try uv run glee as fallback
+        glee_path = "glee"
+
+    # Register Glee MCP server
+    settings["mcpServers"]["glee"] = {
+        "command": glee_path,
+        "args": ["mcp"],
+    }
+
+    # Write settings back
+    with open(settings_path, "w") as f:
+        json.dump(settings, f, indent=2)
+
+    return True
+
+
 def init_project(project_path: str, project_id: str | None = None) -> dict[str, Any]:
-    """Initialize a Glee project."""
+    """Initialize a Glee project. Idempotent - safe to run multiple times.
+
+    Returns dict with 'project' config and 'mcp_registered' bool.
+    """
     project_path = os.path.abspath(project_path)
     glee_dir = Path(project_path) / GLEE_PROJECT_DIR
 
@@ -109,12 +160,17 @@ def init_project(project_path: str, project_id: str | None = None) -> dict[str, 
 
     config_path = glee_dir / "config.yml"
 
-    # Check for existing ID if not forcing new one
+    # Check for existing config if not forcing new ID
+    existing_config: dict[str, Any] | None = None
     existing_id: str | None = None
-    if config_path.exists() and not project_id:
+    if config_path.exists():
         with open(config_path) as f:
-            existing: dict[str, Any] = yaml.safe_load(f) or {}
-            existing_id = existing.get("project", {}).get("id")
+            existing_config = yaml.safe_load(f) or {}
+            existing_id = existing_config.get("project", {}).get("id") if not project_id else None
+
+    # Preserve existing agents if re-initializing
+    existing_agents = existing_config.get("agents", []) if existing_config else []
+    existing_dispatch = existing_config.get("dispatch", {"coder": "first", "reviewer": "all"}) if existing_config else {"coder": "first", "reviewer": "all"}
 
     config: dict[str, Any] = {
         "project": {
@@ -122,18 +178,25 @@ def init_project(project_path: str, project_id: str | None = None) -> dict[str, 
             "name": os.path.basename(project_path),
             "path": project_path,
         },
-        "agents": [],
-        "dispatch": {"coder": "first", "reviewer": "all"},
+        "agents": existing_agents,
+        "dispatch": existing_dispatch,
     }
 
     with open(config_path, "w") as f:
         _dump_yaml(config, f)
 
-    # Add .glee/ to .gitignore
+    # Add .glee/ to .gitignore (idempotent)
     _add_to_gitignore(project_path, ".glee/")
 
+    # Register MCP server with Claude in project-local settings (idempotent)
+    mcp_registered = register_mcp_server(project_path)
+
     update_project_registry(config["project"]["id"], config["project"]["name"], project_path)
-    return config
+
+    # Return config with mcp registration status
+    result = dict(config)
+    result["_mcp_registered"] = mcp_registered
+    return result
 
 
 def get_project_config(project_path: str | None = None) -> dict[str, Any] | None:
