@@ -1,4 +1,4 @@
-.PHONY: install sync dev stdio d-up d-down d-logs d-build d-codex-auth clean version patch minor major push
+.PHONY: install sync dev stdio test d-up d-down d-logs d-build d-codex-auth clean version patch minor major push
 
 # Get current version from pyproject.toml
 CURRENT_VERSION := $(shell grep -m1 'version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
@@ -16,6 +16,10 @@ dev:
 # Run MCP server (stdio mode - called by Claude Code)
 stdio:
 	uv run python -m glee
+
+# Test
+test:
+	uv run --extra dev pytest -v
 
 # Database migrations
 m:
