@@ -41,7 +41,8 @@ patch minor major: version
 	}') && \
 	echo "New version: $$NEW_VERSION" && \
 	sed -i '' 's/version = "$(CURRENT_VERSION)"/version = "'$$NEW_VERSION'"/' pyproject.toml && \
-	git add pyproject.toml && \
+	uv sync && \
+	git add pyproject.toml uv.lock && \
 	git commit -m "chore: bump version to v$$NEW_VERSION" && \
 	git tag "v$$NEW_VERSION" && \
 	echo "Created tag v$$NEW_VERSION" && \
