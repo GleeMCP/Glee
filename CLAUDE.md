@@ -6,30 +6,38 @@ This file provides guidance to Claude Code when working with this repository.
 
 Glee is the Conductor for Your AI Orchestra - an orchestration layer for AI coding agents (Claude, Codex, Gemini) with shared memory, context injection, and multi-agent collaboration.
 
-## Commands
+## Development
 
 ```bash
-# Install dependencies
+# Clone the repository
+git clone https://github.com/GleeCodeAI/Glee
+cd Glee
+
+# Install dev dependencies
 uv sync
 
-# Run CLI
+# Run CLI during development
 uv run glee --help
+```
 
+## Usage
+
+```bash
 # Initialize project
-uv run glee init
+glee init
 
 # Connect agents
-uv run glee connect claude --role coder --domain backend,api
-uv run glee connect codex --role reviewer --focus security,performance
+glee connect claude --role coder --domain backend,api
+glee connect codex --role reviewer --focus security,performance
 
 # View status
-uv run glee status
+glee status
 
 # Run review
-uv run glee review [files...]
+glee review [files...]
 
 # Test an agent
-uv run glee test-agent claude --prompt "Say hello"
+glee test-agent claude --prompt "Say hello"
 ```
 
 ## Architecture
