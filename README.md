@@ -73,4 +73,4 @@ dispatch:
 
 ## Documentation
 
-See [docs/PRD.md](docs/PRD.md) for full documentation.
+See [PRD.md](https://github.com/GleeCodeAI/Glee/blob/main/docs/PRD.md) for full documentation.
