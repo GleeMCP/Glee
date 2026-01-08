@@ -34,6 +34,18 @@ Quick start:
 console = Console()
 
 
+def get_version() -> str:
+    """Get the package version."""
+    from importlib.metadata import version
+    return version("glee")
+
+
+@app.command()
+def version():
+    """Show Glee version."""
+    console.print(f"glee {get_version()}")
+
+
 @app.callback()
 def main_callback() -> None:
     """Initialize logging for all commands."""
