@@ -1,5 +1,7 @@
 """Claude Code CLI agent adapter."""
 
+from typing import Any
+
 from .base import AgentResult, BaseAgent
 
 
@@ -10,7 +12,7 @@ class ClaudeAgent(BaseAgent):
     command = "claude"
     capabilities = ["code", "review", "explain"]
 
-    def run(self, prompt: str, **kwargs) -> AgentResult:
+    def run(self, prompt: str, **kwargs: Any) -> AgentResult:
         """Run Claude with a prompt.
 
         Uses: claude -p "prompt" --output-format text

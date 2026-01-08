@@ -1,6 +1,7 @@
 """Codex CLI agent adapter."""
 
 import json
+from typing import Any
 
 from .base import AgentResult, BaseAgent
 
@@ -12,7 +13,7 @@ class CodexAgent(BaseAgent):
     command = "codex"
     capabilities = ["code", "review"]
 
-    def run(self, prompt: str, **kwargs) -> AgentResult:
+    def run(self, prompt: str, **kwargs: Any) -> AgentResult:
         """Run Codex with a prompt.
 
         Uses: codex exec --json --full-auto "prompt"
@@ -50,9 +51,9 @@ class CodexAgent(BaseAgent):
 
         return result
 
-    def _parse_jsonl(self, output: str) -> list[dict]:
+    def _parse_jsonl(self, output: str) -> list[dict[str, Any]]:
         """Parse JSONL output from Codex."""
-        results = []
+        results: list[dict[str, Any]] = []
         for line in output.strip().split("\n"):
             if line.strip():
                 try:

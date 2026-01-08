@@ -14,7 +14,7 @@ class AgentResult:
     output: str
     error: str | None = None
     exit_code: int = 0
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=lambda: {})
 
     @property
     def success(self) -> bool:
@@ -53,7 +53,7 @@ class BaseAgent(ABC):
             return None
 
     @abstractmethod
-    def run(self, prompt: str, **kwargs) -> AgentResult:
+    def run(self, prompt: str, **kwargs: Any) -> AgentResult:
         """Run the agent with a prompt."""
         pass
 

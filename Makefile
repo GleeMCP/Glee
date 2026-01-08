@@ -1,4 +1,4 @@
-.PHONY: install sync test clean version patch minor major push
+.PHONY: install sync test lint clean version patch minor major push
 
 # Get current version from pyproject.toml
 CURRENT_VERSION := $(shell grep -m1 'version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
@@ -12,6 +12,10 @@ sync: install
 # Test
 test:
 	uv run --extra dev pytest -v
+
+# Type check
+lint:
+	uv run pyright glee/
 
 # Clean
 clean:

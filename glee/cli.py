@@ -1,5 +1,7 @@
 """Glee CLI - The Conductor for Your AI Orchestra."""
 
+from typing import Any
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -120,9 +122,9 @@ def agents():
 def connect(
     command: str = typer.Argument(..., help="CLI command (claude, codex, gemini)"),
     role: str = typer.Option(..., "--role", "-r", help="Role: coder, reviewer, or auditor"),
-    domain: str = typer.Option(None, "--domain", "-d", help="Domain areas for coders (comma-separated)"),
-    focus: str = typer.Option(None, "--focus", "-f", help="Focus areas for reviewers (comma-separated)"),
-    priority: int = typer.Option(None, "--priority", "-p", help="Priority for coders (lower = higher priority)"),
+    domain: str | None = typer.Option(None, "--domain", "-d", help="Domain areas for coders (comma-separated)"),
+    focus: str | None = typer.Option(None, "--focus", "-f", help="Focus areas for reviewers (comma-separated)"),
+    priority: int | None = typer.Option(None, "--priority", "-p", help="Priority for coders (lower = higher priority)"),
 ):
     """Connect an agent with a role to the current project."""
     from glee.agents import registry
@@ -221,14 +223,15 @@ def init(
 
 @app.command()
 def review(
-    files: list[str] = typer.Argument(None, help="Files to review"),
-    focus: str = typer.Option(None, "--focus", "-f", help="Focus areas (comma-separated: security, performance, etc.)"),
-    reviewer: str = typer.Option(None, "--reviewer", "-r", help="Specific reviewer to use"),
-):
+    files: list[str] | None = typer.Argument(None, help="Files to review"),
+    focus: str | None = typer.Option(None, "--focus", "-f", help="Focus areas (comma-separated: security, performance, etc.)"),
+    reviewer: str | None = typer.Option(None, "--reviewer", "-r", help="Specific reviewer to use"),
+) -> None:
     """Trigger multi-reviewer workflow."""
     import concurrent.futures
 
     from glee.agents import registry
+    from glee.agents.base import AgentResult
     from glee.config import get_connected_agents, get_dispatch_config, get_project_config
 
     # Validate project is initialized
@@ -267,27 +270,30 @@ def review(
     # Show review plan
     console.print("[bold]Review Plan[/bold]")
     console.print(f"  Files: {', '.join(files) if files else 'current diff'}")
-    console.print(f"  Reviewers: {', '.join(r.get('name') for r in reviewers)}")
+    console.print(f"  Reviewers: {', '.join(r.get('name', 'unknown') for r in reviewers)}")
     if focus_list:
         console.print(f"  Focus: {', '.join(focus_list)}")
     console.print()
 
     # Run reviews
-    results = {}
+    results: dict[str, dict[str, Any]] = {}
 
-    def run_single_review(reviewer_config):
-        name = reviewer_config.get("name")
+    def run_single_review(
+        reviewer_config: dict[str, Any],
+    ) -> tuple[str, AgentResult | None, str | None]:
+        name = reviewer_config.get("name", "unknown")
         command = reviewer_config.get("command")
-        agent = registry.get(command)
+        agent = registry.get(command) if command else None
         if not agent:
             return name, None, f"Command {command} not found in registry"
         if not agent.is_available():
             return name, None, f"CLI {command} not installed"
 
         # Merge focus areas
-        review_focus = focus_list or []
-        if reviewer_config.get("focus"):
-            review_focus = list(set(review_focus + reviewer_config.get("focus", [])))
+        review_focus: list[str] = focus_list or []
+        config_focus = reviewer_config.get("focus")
+        if config_focus:
+            review_focus = list(set(review_focus + config_focus))
 
         try:
             result = agent.run_review(files=files or [], focus=review_focus if review_focus else None)

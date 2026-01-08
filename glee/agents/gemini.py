@@ -1,5 +1,7 @@
 """Gemini CLI agent adapter."""
 
+from typing import Any
+
 from .base import AgentResult, BaseAgent
 
 
@@ -10,7 +12,7 @@ class GeminiAgent(BaseAgent):
     command = "gemini"
     capabilities = ["code", "review"]
 
-    def run(self, prompt: str, **kwargs) -> AgentResult:
+    def run(self, prompt: str, **kwargs: Any) -> AgentResult:
         """Run Gemini with a prompt.
 
         Uses: gemini -p "prompt"
