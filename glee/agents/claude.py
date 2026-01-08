@@ -3,6 +3,7 @@
 from typing import Any
 
 from .base import AgentResult, BaseAgent
+from .prompts import code_prompt, judge_prompt, process_feedback_prompt, review_prompt
 
 
 class ClaudeAgent(BaseAgent):
@@ -37,27 +38,7 @@ class ClaudeAgent(BaseAgent):
             files: List of file paths to review
             focus: Optional focus areas (security, performance, etc.)
         """
-        # Build review prompt
-        focus_str = ""
-        if focus:
-            focus_str = f"Focus on: {', '.join(focus)}. "
-
-        files_str = ", ".join(files) if files else "the current codebase"
-
-        prompt = f"""Review the following code: {files_str}
-
-{focus_str}Provide structured feedback with:
-1. Critical issues (must fix)
-2. Warnings (should fix)
-3. Suggestions (nice to have)
-
-For each issue, specify:
-- File and line number
-- Description
-- Suggested fix
-
-End with APPROVED if no critical issues, or NEEDS_CHANGES if issues found."""
-
+        prompt = review_prompt(files, focus)
         return self.run(prompt, allowedTools=["Read", "Glob", "Grep"])
 
     def run_code(self, task: str, files: list[str] | None = None) -> AgentResult:
@@ -67,14 +48,7 @@ End with APPROVED if no critical issues, or NEEDS_CHANGES if issues found."""
             task: Description of the coding task
             files: Optional list of files to focus on
         """
-        context = ""
-        if files:
-            context = f"Focus on these files: {', '.join(files)}. "
-
-        prompt = f"""{context}{task}
-
-Implement the requested changes. Use the available tools to read and modify files."""
-
+        prompt = code_prompt(task, files)
         return self.run(
             prompt,
             allowedTools=["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
@@ -96,40 +70,20 @@ Implement the requested changes. Use the available tools to read and modify file
         Returns:
             AgentResult with decision: ENFORCE, DISMISS, or ESCALATE
         """
-        prompt = f"""You are an impartial judge arbitrating a dispute between a coder and a reviewer.
-
-## Code Context
-```
-{code_context}
-```
-
-## Reviewer's Feedback (Disputed)
-{review_item}
-
-## Coder's Objection
-{coder_objection}
-
-## Your Task
-Evaluate both perspectives objectively and make a decision:
-
-1. **ENFORCE** - The reviewer is correct. The coder must implement the feedback.
-2. **DISMISS** - The coder's objection is valid. The review item can be ignored.
-3. **ESCALATE** - The situation is ambiguous and requires human judgment.
-
-## Guidelines
-- Focus on technical correctness, not preferences
-- Consider: Does the review identify a real issue? Is the coder's objection factually accurate?
-- ENFORCE if: The review catches a genuine bug, security issue, or violation of requirements
-- DISMISS if: The review is based on a misunderstanding, or the suggestion would break functionality
-- ESCALATE if: Both sides have valid points, or the decision requires domain knowledge you lack
-
-## Response Format
-Start your response with one of: ENFORCE, DISMISS, or ESCALATE
-
-Then provide a brief explanation (2-3 sentences) justifying your decision.
-
-Example:
-ENFORCE
-The reviewer correctly identified a SQL injection vulnerability. The coder's objection that "the input is trusted" is incorrect because user input should never be trusted without validation."""
-
+        prompt = judge_prompt(code_context, review_item, coder_objection)
         return self.run(prompt, allowedTools=["Read", "Glob", "Grep"])
+
+    def run_process_feedback(self, review_feedback: str) -> AgentResult:
+        """Process review feedback and decide whether to accept or dispute.
+
+        Args:
+            review_feedback: The structured review feedback from reviewer
+
+        Returns:
+            AgentResult with acceptance or objection for each item
+        """
+        prompt = process_feedback_prompt(review_feedback)
+        return self.run(
+            prompt,
+            allowedTools=["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+        )

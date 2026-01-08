@@ -87,6 +87,18 @@ class BaseAgent(ABC):
         """
         pass
 
+    @abstractmethod
+    def run_process_feedback(self, review_feedback: str) -> AgentResult:
+        """Process review feedback and decide whether to accept or dispute.
+
+        Args:
+            review_feedback: The structured review feedback from reviewer
+
+        Returns:
+            AgentResult with acceptance or objection for each item
+        """
+        pass
+
     def _run_subprocess(
         self,
         args: list[str],
