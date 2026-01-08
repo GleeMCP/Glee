@@ -250,7 +250,8 @@ def review(
 
     from glee.agents import registry
     from glee.agents.base import AgentResult
-    from glee.config import get_connected_agents, get_dispatch_config, get_project_config
+    from glee.config import get_connected_agents, get_project_config
+    from glee.dispatch import select_reviewers
 
     # Validate project is initialized
     config = get_project_config()
@@ -273,29 +274,19 @@ def review(
             console.print(f"[yellow]No files found in {p}[/yellow]")
             raise typer.Exit(1)
 
-    # Get connected reviewers
-    reviewers = get_connected_agents(role="reviewer")
+    # Get reviewers using dispatch module
+    reviewers = select_reviewers()
     if not reviewers:
         console.print("[red]No reviewers connected. Use 'glee connect <command> --role reviewer' first.[/red]")
         raise typer.Exit(1)
 
     # Filter to specific reviewer if requested (by name or command)
     if reviewer:
-        reviewers = [r for r in reviewers if r.get("name") == reviewer or r.get("command") == reviewer]
+        all_reviewers = get_connected_agents(role="reviewer")
+        reviewers = [r for r in all_reviewers if r.get("name") == reviewer or r.get("command") == reviewer]
         if not reviewers:
             console.print(f"[red]Reviewer {reviewer} not connected[/red]")
             raise typer.Exit(1)
-
-    # Get dispatch config
-    dispatch = get_dispatch_config()
-    dispatch_strategy = dispatch.get("reviewer", "all")
-
-    # If not dispatching all, select based on strategy
-    if dispatch_strategy == "first" and len(reviewers) > 1:
-        reviewers = [reviewers[0]]
-    elif dispatch_strategy == "random" and len(reviewers) > 1:
-        import random
-        reviewers = [random.choice(reviewers)]
 
     # Parse focus areas
     focus_list = [f.strip() for f in focus.split(",")] if focus else None

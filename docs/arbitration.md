@@ -14,6 +14,14 @@ Glee's arbitration system handles disagreements between coder and reviewer agent
 
 The judge only intervenes when there is a dispute. It does not participate in the standard review flow.
 
+## Design Rules
+
+1. **No fallback agent** - Do not create a "catch-all" agent with no domain. Each agent should have clear specialization.
+
+2. **No additional reviewers during dispute** - When a dispute occurs, do not bring in more reviewers. Resolve the dispute with the existing review using judge/human/discard.
+
+3. **Domain mismatch uses first coder** - If no coder has a matching domain for a task, use the first available coder. Do not fail or prompt.
+
 ## Review Severity Levels
 
 ### Opinion Levels
