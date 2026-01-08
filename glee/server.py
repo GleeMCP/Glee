@@ -1,20 +1,25 @@
 """MCP Server for Glee"""
 
+from __future__ import annotations
+
 import os
+from typing import Any
+
+from loguru import logger
+from fastapi import FastAPI, Request
+from fastapi.responses import Response
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.server.sse import SseServerTransport
 from mcp.types import Tool, TextContent
-from starlette.applications import Starlette
-from starlette.routing import Route
-from starlette.responses import Response
 import uvicorn
 
-from .types import MCPReviewResult, ReviewStatus
+from .types import MCPReviewResult
 from .state.storage import LocalStorage
 from .state.session import SessionManager
 from .graph.review_graph import run_single_review
 from .services.codex_cli import get_changed_files
+from .logging import setup_logging
 
 
 def create_server() -> Server:
@@ -88,8 +93,9 @@ def create_server() -> Server:
         ]
 
     @server.call_tool()
-    async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         project_path = os.getcwd()
+        logger.info("Tool called", tool=name, arguments=arguments)
 
         if name == "start_review":
             # Get files to review
@@ -111,7 +117,9 @@ def create_server() -> Server:
             )
 
             # Run review
+            logger.info("Starting review", review_id=session.review_id, files=files)
             result = run_single_review(session, session_manager)
+            logger.info("Review completed", review_id=session.review_id, status=result.status)
 
             response = MCPReviewResult(
                 status=result.status,
@@ -202,6 +210,9 @@ def create_server() -> Server:
 async def main():
     """Main entry point"""
     transport = os.environ.get("GLEE_TRANSPORT", "stdio")
+    enable_db_logging = transport == "sse"  # Only log to DB in SSE mode
+    setup_logging(enable_db=enable_db_logging)
+    logger.info("Starting Glee server", transport=transport)
 
     if transport == "sse":
         await run_sse_server()
@@ -218,28 +229,25 @@ async def run_stdio_server():
 
 async def run_sse_server():
     """Run MCP server with SSE transport over HTTP"""
-    server = create_server()
+    mcp_server = create_server()
     sse = SseServerTransport("/messages/")
 
-    async def handle_sse(request):
+    app = FastAPI(title="Glee MCP Server")
+
+    @app.get("/sse")
+    async def handle_sse(request: Request) -> Response:
         async with sse.connect_sse(
-            request.scope, request.receive, request._send
+            request.scope, request.receive, request._send  # type: ignore[arg-type]
         ) as streams:
-            await server.run(
-                streams[0], streams[1], server.create_initialization_options()
+            await mcp_server.run(
+                streams[0], streams[1], mcp_server.create_initialization_options()
             )
         return Response()
 
-    async def handle_messages(request):
-        await sse.handle_post_message(request.scope, request.receive, request._send)
+    @app.post("/messages/")
+    async def handle_messages(request: Request) -> Response:
+        await sse.handle_post_message(request.scope, request.receive, request._send)  # type: ignore[arg-type]
         return Response()
-
-    app = Starlette(
-        routes=[
-            Route("/sse", endpoint=handle_sse),
-            Route("/messages/", endpoint=handle_messages, methods=["POST"]),
-        ],
-    )
 
     host = os.environ.get("GLEE_HOST", "127.0.0.1")
     port = int(os.environ.get("GLEE_PORT", "8080"))

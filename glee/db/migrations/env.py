@@ -12,7 +12,7 @@ if config.config_file_name is not None:
 # Get database URL from environment
 database_url = os.environ.get(
     "DATABASE_URL",
-    "mysql+pymysql://glee:glee@localhost:3306/glee"
+    "postgresql+psycopg2://glee:glee@localhost:5432/glee"
 )
 config.set_main_option("sqlalchemy.url", database_url)
 

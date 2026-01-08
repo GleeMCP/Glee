@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column('status', sa.Enum('in_progress', 'approved', 'max_iterations', 'aborted', 'needs_human', name='review_status'), nullable=False, server_default='in_progress'),
         sa.Column('pending_questions', sa.JSON, nullable=True),
         sa.Column('created_at', sa.TIMESTAMP, server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('updated_at', sa.TIMESTAMP, server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.TIMESTAMP, server_default=sa.text('CURRENT_TIMESTAMP')),
     )
 
     op.create_table(
