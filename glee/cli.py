@@ -13,7 +13,22 @@ from glee.logging import get_agent_logger, setup_logging
 
 app = typer.Typer(
     name="glee",
-    help="The Conductor for Your AI Orchestra",
+    help="""The Conductor for Your AI Orchestra
+
+Orchestrate multiple AI coding agents (Claude, Codex, Gemini) with:
+  - Multiple coders with domain specialization
+  - Multiple reviewers with focus areas
+  - Shared memory and context injection
+  - Dispute resolution with judge role
+
+Quick start:
+  glee init                              Initialize project
+  glee connect claude --role coder       Add a coder
+  glee connect codex --role reviewer     Add a reviewer
+  glee connect claude --role judge       Add a judge (for disputes)
+  glee status                            View connected agents
+  glee review src/                       Run multi-agent review
+""",
     no_args_is_help=True,
 )
 console = Console()
