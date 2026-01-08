@@ -95,9 +95,10 @@ project:
   name: my-app
   path: /Users/yumin/ventures/my-app        # Absolute project path
 
-# Coders - different agents for different domains
+# Agents - name is auto-generated unique ID, command is the CLI to invoke
 agents:
-  - name: claude
+  - name: claude-a1b2c3    # unique ID (auto-generated)
+    command: claude        # CLI command to invoke
     role: coder
     domain:
       - backend
@@ -105,7 +106,8 @@ agents:
       - database
     priority: 1
 
-  - name: gemini
+  - name: gemini-d4e5f6
+    command: gemini
     role: coder
     domain:
       - frontend
@@ -113,7 +115,8 @@ agents:
       - css
     priority: 2
 
-  - name: codex
+  - name: codex-g7h8i9
+    command: codex
     role: coder
     domain:
       - infra
@@ -122,13 +125,15 @@ agents:
     priority: 3
 
   # Reviewers - diverse perspectives catch more issues
-  - name: codex
+  - name: codex-j0k1l2
+    command: codex
     role: reviewer
     focus:
       - security
       - performance
 
-  - name: claude
+  - name: claude-m3n4o5
+    command: claude
     role: reviewer
     focus:
       - architecture
