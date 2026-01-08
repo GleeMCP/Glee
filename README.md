@@ -107,10 +107,10 @@ dispatch:
 ```
 glee init
     ├── Creates .glee/config.yml
-    └── Creates .claude/settings.local.json (MCP registration)
+    └── Creates .mcp.json (MCP server registration)
 
 claude (start in project)
-    └── Reads .claude/settings.local.json
+    └── Reads .mcp.json
         └── Spawns `glee mcp` as MCP server
             └── Claude now has glee_* tools
 ```

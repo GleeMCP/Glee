@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code when working with this repository.
 
+## Rules
+
+- **MUST NOT** change `version` in `pyproject.toml` - the user manages version bumps manually
+- **MUST** run `uv sync` after modifying dependencies in `pyproject.toml`
+- **MUST** test CLI commands with `uv run glee <command>` during development
+- **SHOULD** update docs (README.md, CLAUDE.md, docs/) when adding new features
+- **MUST NOT** add MCP servers to global `~/.claude/settings.json`
+- **MUST** use project-local `.mcp.json` when editing mcp server configuration for claude code
+
 ## Project Overview
 
 Glee is the Conductor for Your AI Orchestra - an orchestration layer for AI coding agents (Claude, Codex, Gemini) with shared memory, context injection, and multi-agent collaboration.
@@ -82,7 +91,7 @@ Claude/Codex/Gemini CLI
 
 ## MCP Tools
 
-When `glee init` is run, it registers Glee as an MCP server in `.claude/settings.local.json`. Claude Code then has access to:
+When `glee init` is run, it registers Glee as an MCP server in `.mcp.json`. Claude Code then has access to:
 
 - `glee_status` - Show project status and connected agents
 - `glee_review` - Run multi-agent review (accepts flexible target)
@@ -99,15 +108,15 @@ project:
   path: /absolute/path
 
 agents:
-  - name: claude-a1b2c3    # unique ID
-    command: claude        # CLI to invoke
+  - name: claude-a1b2c3 # unique ID
+    command: claude # CLI to invoke
     role: coder
     domain: [backend, api]
     priority: 1
 
 dispatch:
-  coder: first      # first | random | round-robin
-  reviewer: all     # all | first | random
+  coder: first # first | random | round-robin
+  reviewer: all # all | first | random
 ```
 
 ## Files Created by `glee init`
@@ -115,7 +124,6 @@ dispatch:
 ```
 project/
 ├── .glee/
-│   └── config.yml              # Glee project config
-└── .claude/
-    └── settings.local.json     # MCP server registration
+│   └── config.yml    # Glee project config
+└── .mcp.json         # MCP server registration (for Claude Code)
 ```

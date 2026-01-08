@@ -360,8 +360,7 @@ The memory layer provides persistent, searchable storage:
 │   ├── memory.lance/       # LanceDB - vector search
 │   ├── memory.duckdb       # DuckDB - SQL queries
 │   └── sessions/           # Session cache
-└── .claude/
-    └── settings.local.json # MCP server registration (created by glee init)
+└── .mcp.json               # MCP server registration (created by glee init)
 ```
 
 ### Project Registry
@@ -674,10 +673,10 @@ Glee exposes tools to Claude Code via Model Context Protocol (MCP).
 ```
 glee init
     ├── Creates .glee/config.yml (project config)
-    └── Creates .claude/settings.local.json (MCP registration)
+    └── Creates .mcp.json (MCP server registration)
 
 claude (start in project)
-    └── Reads .claude/settings.local.json
+    └── Reads .mcp.json
         └── Spawns `glee mcp` as MCP server
             └── Claude now has glee_* tools
 ```

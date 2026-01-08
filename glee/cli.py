@@ -76,22 +76,22 @@ def stop():
 
 
 def check_mcp_registration(project_path: str | None = None) -> bool:
-    """Check if Glee MCP server is registered in project's .claude/settings.local.json."""
+    """Check if Glee MCP server is registered in project's .mcp.json."""
     import json
     from pathlib import Path
 
     if project_path is None:
         project_path = os.getcwd()
 
-    # Project-local Claude settings
-    claude_settings = Path(project_path) / ".claude" / "settings.local.json"
-    if not claude_settings.exists():
+    # Project-local MCP config
+    mcp_config = Path(project_path) / ".mcp.json"
+    if not mcp_config.exists():
         return False
 
     try:
-        with open(claude_settings) as f:
-            settings = json.load(f)
-        mcp_servers = settings.get("mcpServers", {})
+        with open(mcp_config) as f:
+            config = json.load(f)
+        mcp_servers = config.get("mcpServers", {})
         return "glee" in mcp_servers
     except Exception:
         return False

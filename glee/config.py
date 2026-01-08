@@ -100,7 +100,7 @@ def _add_to_gitignore(project_path: str, entry: str) -> None:
 
 
 def register_mcp_server(project_path: str) -> bool:
-    """Register Glee as an MCP server in project's .claude/settings.local.json. Idempotent.
+    """Register Glee as an MCP server in project's .mcp.json. Idempotent.
 
     Returns True if registration was added, False if already registered.
     """
@@ -108,24 +108,21 @@ def register_mcp_server(project_path: str) -> bool:
     import shutil
 
     project_path = Path(project_path)
-    claude_dir = project_path / ".claude"
-    claude_dir.mkdir(parents=True, exist_ok=True)
+    mcp_config_path = project_path / ".mcp.json"
 
-    settings_path = claude_dir / "settings.local.json"
-
-    # Load existing settings or create empty
-    if settings_path.exists():
-        with open(settings_path) as f:
-            settings = json.load(f)
+    # Load existing config or create empty
+    if mcp_config_path.exists():
+        with open(mcp_config_path) as f:
+            config = json.load(f)
     else:
-        settings = {}
+        config = {}
 
     # Initialize mcpServers if not present
-    if "mcpServers" not in settings:
-        settings["mcpServers"] = {}
+    if "mcpServers" not in config:
+        config["mcpServers"] = {}
 
     # Check if already registered
-    if "glee" in settings["mcpServers"]:
+    if "glee" in config["mcpServers"]:
         return False  # Already registered
 
     # Find glee executable
@@ -135,14 +132,14 @@ def register_mcp_server(project_path: str) -> bool:
         glee_path = "glee"
 
     # Register Glee MCP server
-    settings["mcpServers"]["glee"] = {
+    config["mcpServers"]["glee"] = {
         "command": glee_path,
         "args": ["mcp"],
     }
 
-    # Write settings back
-    with open(settings_path, "w") as f:
-        json.dump(settings, f, indent=2)
+    # Write config back
+    with open(mcp_config_path, "w") as f:
+        json.dump(config, f, indent=2)
 
     return True
 
