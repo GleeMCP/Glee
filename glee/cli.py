@@ -76,7 +76,7 @@ def status():
     # Show connected agents
     coders = get_connected_agents(role="coder")
     reviewers = get_connected_agents(role="reviewer")
-    auditors = get_connected_agents(role="auditor")
+    judges = get_connected_agents(role="judge")
 
     if coders:
         console.print("[bold]Coders[/bold]")
@@ -99,17 +99,16 @@ def status():
             console.print(f"  [{available}] {r.get('name')} ({cmd}): {focus}")
         console.print()
 
-    if auditors:
-        console.print("[bold]Auditors[/bold]")
-        for a in auditors:
-            cmd = a.get("command")
+    if judges:
+        console.print("[bold]Judges[/bold]")
+        for j in judges:
+            cmd = j.get("command")
             agent = registry.get(cmd) if cmd else None
             available = "✓" if agent and agent.is_available() else "✗"
-            focus = ", ".join(a.get("focus", [])) or "general"
-            console.print(f"  [{available}] {a.get('name')} ({cmd}): {focus}")
+            console.print(f"  [{available}] {j.get('name')} ({cmd}): arbitrates disputes")
         console.print()
 
-    if not coders and not reviewers and not auditors:
+    if not coders and not reviewers and not judges:
         console.print("[yellow]No agents connected. Use 'glee connect <command> --role <role>' to add agents.[/yellow]")
 
 
@@ -139,7 +138,7 @@ def agents():
 @app.command()
 def connect(
     command: str = typer.Argument(..., help="CLI command (claude, codex, gemini)"),
-    role: str = typer.Option(..., "--role", "-r", help="Role: coder, reviewer, or auditor"),
+    role: str = typer.Option(..., "--role", "-r", help="Role: coder, reviewer, or judge"),
     domain: str | None = typer.Option(None, "--domain", "-d", help="Domain areas for coders (comma-separated)"),
     focus: str | None = typer.Option(None, "--focus", "-f", help="Focus areas for reviewers (comma-separated)"),
     priority: int | None = typer.Option(None, "--priority", "-p", help="Priority for coders (lower = higher priority)"),
@@ -161,9 +160,9 @@ def connect(
         raise typer.Exit(1)
 
     # Validate role
-    if role not in ("coder", "reviewer", "auditor"):
+    if role not in ("coder", "reviewer", "judge"):
         console.print(f"[red]Invalid role: {role}[/red]")
-        console.print("Valid roles: coder, reviewer, auditor")
+        console.print("Valid roles: coder, reviewer, judge")
         raise typer.Exit(1)
 
     # Check CLI is available

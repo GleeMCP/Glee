@@ -162,9 +162,10 @@ def connect_agent(
             agent_config["domain"] = domain
         if priority is not None:
             agent_config["priority"] = priority
-    elif role in ("reviewer", "auditor"):
+    elif role == "reviewer":
         if focus:
             agent_config["focus"] = focus
+    # Judge role doesn't need additional config fields
 
     # Add new agent (always new since name is unique)
     agents = config.get("agents", [])
@@ -233,6 +234,7 @@ def get_project_context(project_path: str | None = None) -> str | None:
 
     coders = [a for a in agents if a.get("role") == "coder"]
     reviewers = [a for a in agents if a.get("role") == "reviewer"]
+    judges = [a for a in agents if a.get("role") == "judge"]
 
     if coders:
         lines.append("### Coders")
@@ -248,6 +250,13 @@ def get_project_context(project_path: str | None = None) -> str | None:
             cmd = a.get("command", "unknown")
             focus = ", ".join(a.get("focus", []))
             lines.append(f"- {a.get('name')} ({cmd}): {focus}")
+        lines.append("")
+
+    if judges:
+        lines.append("### Judges")
+        for a in judges:
+            cmd = a.get("command", "unknown")
+            lines.append(f"- {a.get('name')} ({cmd}): arbitrates disputes")
         lines.append("")
 
     return "\n".join(lines)

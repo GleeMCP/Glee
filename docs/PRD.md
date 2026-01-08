@@ -30,10 +30,10 @@ Glee is the **orchestration hub** for AI coding agents.
         │                          │                          │
         ▼                          ▼                          ▼
    ┌─────────┐              ┌─────────────┐             ┌──────────┐
-   │ Coders  │              │  Reviewers  │             │ Auditors │
+   │ Coders  │              │  Reviewers  │             │  Judges  │
    ├─────────┤              ├─────────────┤             ├──────────┤
    │ Claude  │              │   Codex     │             │ Claude   │
-   │ Gemini  │              │   Claude    │             │ (security)│
+   │ Gemini  │              │   Claude    │             │ (disputes)│
    │ Codex   │              │   Gemini    │             └──────────┘
    └─────────┘              └─────────────┘
 ```
@@ -591,13 +591,9 @@ agents:
       - architecture
       - maintainability
 
-  # Auditors are specialized reviewers
+  # Judge arbitrates disputes between coder and reviewer
   - name: claude
-    role: auditor
-    focus:
-      - owasp
-      - vulnerabilities
-      - compliance
+    role: judge
 ```
 
 ### 5. Workflow Engine

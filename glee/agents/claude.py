@@ -79,3 +79,57 @@ Implement the requested changes. Use the available tools to read and modify file
             prompt,
             allowedTools=["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
         )
+
+    def run_judge(
+        self,
+        code_context: str,
+        review_item: str,
+        coder_objection: str,
+    ) -> AgentResult:
+        """Arbitrate a dispute between coder and reviewer.
+
+        Args:
+            code_context: The relevant code being disputed
+            review_item: The reviewer's feedback (MUST or HIGH item)
+            coder_objection: The coder's reasoning for disagreeing
+
+        Returns:
+            AgentResult with decision: ENFORCE, DISMISS, or ESCALATE
+        """
+        prompt = f"""You are an impartial judge arbitrating a dispute between a coder and a reviewer.
+
+## Code Context
+```
+{code_context}
+```
+
+## Reviewer's Feedback (Disputed)
+{review_item}
+
+## Coder's Objection
+{coder_objection}
+
+## Your Task
+Evaluate both perspectives objectively and make a decision:
+
+1. **ENFORCE** - The reviewer is correct. The coder must implement the feedback.
+2. **DISMISS** - The coder's objection is valid. The review item can be ignored.
+3. **ESCALATE** - The situation is ambiguous and requires human judgment.
+
+## Guidelines
+- Focus on technical correctness, not preferences
+- Consider: Does the review identify a real issue? Is the coder's objection factually accurate?
+- ENFORCE if: The review catches a genuine bug, security issue, or violation of requirements
+- DISMISS if: The review is based on a misunderstanding, or the suggestion would break functionality
+- ESCALATE if: Both sides have valid points, or the decision requires domain knowledge you lack
+
+## Response Format
+Start your response with one of: ENFORCE, DISMISS, or ESCALATE
+
+Then provide a brief explanation (2-3 sentences) justifying your decision.
+
+Example:
+ENFORCE
+The reviewer correctly identified a SQL injection vulnerability. The coder's objection that "the input is trusted" is incorrect because user input should never be trusted without validation."""
+
+        return self.run(prompt, allowedTools=["Read", "Glob", "Grep"])

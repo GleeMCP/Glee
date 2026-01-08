@@ -46,10 +46,10 @@ With Glee:
     │                 │                 │
     ▼                 ▼                 ▼
 ┌─────────┐     ┌───────────┐     ┌──────────┐
-│ Coders  │     │ Reviewers │     │ Auditors │
+│ Coders  │     │ Reviewers │     │  Judges  │
 ├─────────┤     ├───────────┤     ├──────────┤
 │ Claude  │     │  Codex    │     │ Claude   │
-│ Gemini  │     │  Claude   │     │ (security)│
+│ Gemini  │     │  Claude   │     │ (disputes)│
 │ Codex   │     │  Gemini   │     └──────────┘
 └─────────┘     └───────────┘
 ```

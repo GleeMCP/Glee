@@ -68,6 +68,25 @@ class BaseAgent(ABC):
         """Run a code review."""
         pass
 
+    @abstractmethod
+    def run_judge(
+        self,
+        code_context: str,
+        review_item: str,
+        coder_objection: str,
+    ) -> AgentResult:
+        """Arbitrate a dispute between coder and reviewer.
+
+        Args:
+            code_context: The relevant code being disputed
+            review_item: The reviewer's feedback (MUST or HIGH item)
+            coder_objection: The coder's reasoning for disagreeing
+
+        Returns:
+            AgentResult with decision: ENFORCE, DISMISS, or ESCALATE
+        """
+        pass
+
     def _run_subprocess(
         self,
         args: list[str],
