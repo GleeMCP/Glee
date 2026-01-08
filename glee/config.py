@@ -105,7 +105,6 @@ def register_mcp_server(project_path: str) -> bool:
     Returns True if registration was added, False if already registered.
     """
     import json
-    import shutil
 
     project_path = Path(project_path)
     mcp_config_path = project_path / ".mcp.json"
@@ -125,15 +124,9 @@ def register_mcp_server(project_path: str) -> bool:
     if "glee" in config["mcpServers"]:
         return False  # Already registered
 
-    # Find glee executable
-    glee_path = shutil.which("glee")
-    if not glee_path:
-        # Try uv run glee as fallback
-        glee_path = "glee"
-
-    # Register Glee MCP server
+    # Register Glee MCP server (use "glee" not full path for portability)
     config["mcpServers"]["glee"] = {
-        "command": glee_path,
+        "command": "glee",
         "args": ["mcp"],
     }
 
@@ -144,10 +137,15 @@ def register_mcp_server(project_path: str) -> bool:
     return True
 
 
-def init_project(project_path: str, project_id: str | None = None) -> dict[str, Any]:
+def init_project(project_path: str, project_id: str | None = None, agent: str | None = None) -> dict[str, Any]:
     """Initialize a Glee project. Idempotent - safe to run multiple times.
 
-    Returns dict with 'project' config and 'mcp_registered' bool.
+    Args:
+        project_path: Path to the project directory
+        project_id: Optional project ID (generated if not provided)
+        agent: Primary agent to integrate with (claude, codex, gemini, or None)
+
+    Returns dict with 'project' config and '_mcp_registered' bool.
     """
     project_path = os.path.abspath(project_path)
     glee_dir = Path(project_path) / GLEE_PROJECT_DIR
@@ -185,12 +183,20 @@ def init_project(project_path: str, project_id: str | None = None) -> dict[str, 
     # Add .glee/ to .gitignore (idempotent)
     _add_to_gitignore(project_path, ".glee/")
 
-    # Register MCP server with Claude in project-local settings (idempotent)
-    mcp_registered = register_mcp_server(project_path)
+    # Agent-specific integrations
+    mcp_registered = False
+    if agent == "claude":
+        # Register MCP server for Claude Code (idempotent)
+        # Only add .mcp.json to .gitignore if it doesn't exist yet (user hasn't made a decision)
+        claude_code_mcp_json_exists = (Path(project_path) / ".mcp.json").exists()
+        mcp_registered = register_mcp_server(project_path)
+        if mcp_registered and not claude_code_mcp_json_exists:
+            _add_to_gitignore(project_path, ".mcp.json")
+    # TODO: Add codex and gemini integrations when their MCP/hook systems are known
 
     update_project_registry(config["project"]["id"], config["project"]["name"], project_path)
 
-    # Return config with mcp registration status
+    # Return config with registration status
     result = dict(config)
     result["_mcp_registered"] = mcp_registered
     return result

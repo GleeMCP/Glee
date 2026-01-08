@@ -10,6 +10,7 @@ This file provides guidance to Claude Code when working with this repository.
 - **SHOULD** update docs (README.md, CLAUDE.md, docs/) when adding new features
 - **MUST NOT** add MCP servers to global `~/.claude/settings.json`
 - **MUST** use project-local `.mcp.json` when editing mcp server configuration for claude code
+- **MUST** always fix ide warnings and errors
 
 ## Project Overview
 

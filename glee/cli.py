@@ -139,7 +139,7 @@ def status():
     reviewers = get_connected_agents(role="reviewer")
     judges = get_connected_agents(role="judge")
 
-    all_agents = []
+    all_agents: list[str] = []
     for c in coders:
         cmd = c.get("command")
         agent = registry.get(cmd) if cmd else None
@@ -279,28 +279,84 @@ def disconnect(
 
 @app.command()
 def init(
+    agent: str | None = typer.Argument(None, help="Primary agent (claude, codex, gemini, opencode, cursor, etc.)"),
     new_id: bool = typer.Option(False, "--new-id", help="Generate new project ID"),
 ):
-    """Initialize Glee in current directory. Idempotent - safe to run multiple times."""
+    """Initialize Glee in current directory.
+
+    Examples:
+        glee init           # Prompts for agent choice
+        glee init claude    # Integrate with Claude Code
+        glee init codex     # Integrate with Codex
+    """
     import os
     import uuid
 
     from glee.config import init_project
 
+    valid_agents = [
+        "claude", "codex", "gemini", "opencode", "crush",
+        "mistral", "vibe", "cursor", "trae", "antigravity"
+    ]
+
+    # If no agent specified, prompt user
+    if agent is None:
+        console.print("[bold]Which coding agent do you primarily use?[/bold]")
+        console.print("  1. claude       (Claude Code)")
+        console.print("  2. codex        (OpenAI Codex)")
+        console.print("  3. gemini       (Google Gemini)")
+        console.print("  4. opencode     (OpenCode)")
+        console.print("  5. crush        (Crush)")
+        console.print("  6. mistral      (Mistral)")
+        console.print("  7. vibe         (Vibe)")
+        console.print("  8. cursor       (Cursor)")
+        console.print("  9. trae         (Trae)")
+        console.print(" 10. antigravity  (Antigravity)")
+        console.print(" 11. none         (Skip agent integration)")
+        console.print()
+        choice = typer.prompt("Enter choice (1-11 or agent name)", default="1")
+
+        choice_map = {
+            "1": "claude", "2": "codex", "3": "gemini", "4": "opencode",
+            "5": "crush", "6": "mistral", "7": "vibe", "8": "cursor",
+            "9": "trae", "10": "antigravity", "11": None
+        }
+        if choice in choice_map:
+            agent = choice_map[choice]
+        elif choice.lower() in valid_agents:
+            agent = choice.lower()
+        elif choice.lower() == "none":
+            agent = None
+        else:
+            console.print(f"[red]Invalid choice: {choice}[/red]")
+            raise typer.Exit(1)
+
+    # Validate agent if provided
+    if agent is not None and agent not in valid_agents:
+        console.print(f"[red]Unknown agent: {agent}[/red]")
+        console.print(f"Valid agents: {', '.join(valid_agents)}")
+        raise typer.Exit(1)
+
     project_path = os.getcwd()
     project_id = str(uuid.uuid4()) if new_id else None
 
-    config = init_project(project_path, project_id)
+    config = init_project(project_path, project_id, agent=agent)
     console.print(f"[green]Initialized Glee project:[/green]")
     console.print(f"  ID: {config['project']['id']}")
     console.print(f"  Path: {config['project']['path']}")
     console.print(f"  Config: .glee/config.yml")
 
-    # Show MCP registration status
-    if config.get("_mcp_registered"):
-        console.print(f"  MCP: [green]registered with Claude[/green]")
+    # Show agent integration status
+    if agent == "claude" and config.get("_mcp_registered"):
+        console.print(f"  Claude: [green].mcp.json created[/green]")
+    elif agent == "claude":
+        console.print(f"  Claude: [dim].mcp.json already exists[/dim]")
+    elif agent == "codex":
+        console.print(f"  Codex: [yellow]integration not yet implemented[/yellow]")
+    elif agent == "gemini":
+        console.print(f"  Gemini: [yellow]integration not yet implemented[/yellow]")
     else:
-        console.print(f"  MCP: [dim]already registered[/dim]")
+        console.print(f"  Agent: [dim]no integration configured[/dim]")
 
 
 @app.command()
