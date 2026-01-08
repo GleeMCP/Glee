@@ -1,4 +1,4 @@
-.PHONY: install sync dev stdio test d-up d-down d-logs d-build d-codex-auth clean version patch minor major push
+.PHONY: install sync test clean version patch minor major push
 
 # Get current version from pyproject.toml
 CURRENT_VERSION := $(shell grep -m1 'version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
@@ -9,45 +9,9 @@ install:
 
 sync: install
 
-# Run MCP server (SSE mode for local development)
-dev:
-	GLEE_TRANSPORT=sse uv run python -m glee
-
-# Run MCP server (stdio mode - called by Claude Code)
-stdio:
-	uv run python -m glee
-
 # Test
 test:
 	uv run --extra dev pytest -v
-
-# Database migrations
-m:
-	uv run alembic upgrade head
-
-m-new:
-	@read -p "Migration name: " name; \
-	uv run alembic revision -m "$$name"
-
-m-down:
-	uv run alembic downgrade -1
-
-# Docker
-d-up:
-	docker compose up -d
-
-d-down:
-	docker compose down
-
-d-logs:
-	docker compose logs -f
-
-d-build:
-	docker compose build --no-cache
-
-# Codex auth (inside container)
-d-codex-auth:
-	docker exec -it glee-server codex login --device-auth
 
 # Clean
 clean:

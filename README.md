@@ -7,81 +7,67 @@ Multiple AIs working together like a Glee Club, making coding joyful.
 ## Quick Start
 
 ```bash
-# Install with uv
+# Install
 uv sync
 
-# Test help
-uv run python -m glee --help
+# Initialize project
+uv run glee init
+
+# Connect agents
+uv run glee connect claude --role coder --domain backend,api
+uv run glee connect codex --role reviewer --focus security,performance
+
+# View status
+uv run glee status
+
+# Run review
+uv run glee review src/main.py
 ```
 
-## Configure Claude Code
+## Features
 
-Add to `.claude/settings.local.json` (per-project) or `~/.claude/settings.json` (global):
+- **Multiple Coders**: Different agents for different domains (backend, frontend, infra)
+- **Multiple Reviewers**: Get diverse perspectives (security, performance, architecture)
+- **Parallel Execution**: Reviews run concurrently for speed
+- **Unique Agent IDs**: Each connected agent gets a unique name like `claude-a1b2c3`
 
-```json
-{
-  "mcpServers": {
-    "glee": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/clean-code-agent", "python", "-m", "glee"]
-    }
-  },
-  "customSlashCommands": {
-    "glee-review": {
-      "description": "Start a code review using Codex",
-      "prompt": "Call mcp__glee__start_review to get a code review from Codex. Based on the feedback, fix any issues and call the tool again until status is 'approved' or 'max_iterations'."
-    }
-  },
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "prompt",
-            "prompt": "If code was modified (Edit/Write tools were used), ask the user: 'Do you want me to run a Codex review?' If they say yes, call mcp__glee__start_review."
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-## Docker (Recommended for Windows/Server)
+## CLI Commands
 
 ```bash
-# Start with Docker Compose
-docker compose up -d
+glee init                    # Initialize .glee/config.yml
+glee connect <cmd> --role <role>  # Connect an agent
+glee disconnect <name>       # Disconnect an agent
+glee status                  # Show project status
+glee agents                  # List available agents
+glee review [files...]       # Run multi-reviewer workflow
+glee test-agent <cmd>        # Test an agent
 ```
 
-Configure Claude Code to connect via SSE:
+## Configuration
 
-```json
-{
-  "mcpServers": {
-    "glee": {
-      "url": "http://localhost:8080/sse"
-    }
-  }
-}
+```yaml
+# .glee/config.yml
+project:
+  id: 550e8400-e29b-41d4-a716-446655440000
+  name: my-app
+  path: /Users/yumin/ventures/my-app
+
+agents:
+  - name: claude-a1b2c3
+    command: claude
+    role: coder
+    domain: [backend, api]
+    priority: 1
+
+  - name: codex-d4e5f6
+    command: codex
+    role: reviewer
+    focus: [security, performance]
+
+dispatch:
+  coder: first      # first | random | round-robin
+  reviewer: all     # all | first | random
 ```
-
-## Usage
-
-### Manual trigger
-```
-/glee-review
-```
-
-### Auto prompt
-After each response with code changes, Claude will ask if you want a Codex review.
-
-## MCP Tools
-
-- `start_review` - Start a code review session using Codex
-- `continue_review` - Continue review after human input
-- `get_review_status` - Check review status
 
 ## Documentation
 

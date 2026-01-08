@@ -730,37 +730,25 @@ DuckDB (structured queries, statistics)
 glee/
 ├── glee/
 │   ├── __init__.py
-│   ├── __main__.py           # CLI entry point
-│   ├── cli/
-│   │   ├── main.py           # CLI commands
-│   │   ├── start.py          # glee start
-│   │   ├── connect.py        # glee connect
-│   │   └── review.py         # glee review
-│   ├── core/
-│   │   ├── orchestrator.py   # Agent orchestration
-│   │   ├── registry.py       # Agent registry
-│   │   └── workflow.py       # Workflow engine
+│   ├── cli.py                # Typer CLI commands
+│   ├── config.py             # Configuration management
+│   ├── logging.py            # Logging setup
 │   ├── agents/
+│   │   ├── __init__.py       # Agent registry
 │   │   ├── base.py           # Agent interface
 │   │   ├── claude.py         # Claude Code adapter
 │   │   ├── codex.py          # Codex adapter
 │   │   └── gemini.py         # Gemini adapter
-│   ├── memory/
-│   │   ├── store.py          # Memory abstraction
-│   │   ├── lance.py          # LanceDB backend (vector)
-│   │   ├── duck.py           # DuckDB backend (SQL)
-│   │   └── embed.py          # fastembed wrapper
-│   ├── review/
-│   │   ├── protocol.py       # Review protocol
-│   │   ├── checklists.py     # Review checklists
-│   │   └── parser.py         # Feedback parser
-│   └── db/
-│       └── migrations/       # Alembic migrations
+│   └── memory/               # TODO: Memory layer
+│       ├── store.py          # Memory abstraction
+│       ├── lance.py          # LanceDB backend (vector)
+│       ├── duck.py           # DuckDB backend (SQL)
+│       └── embed.py          # fastembed wrapper
 ├── docs/
 │   ├── VISION.md
 │   └── PRD.md
-├── pyproject.toml
-└── glee.example.yaml
+├── tests/
+└── pyproject.toml
 ```
 
 ---
