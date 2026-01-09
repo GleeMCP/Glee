@@ -4,7 +4,20 @@ Glee provides full observability into reviewer agent reasoning through real-time
 
 ## Real-time Streaming
 
-When running reviews via MCP (`glee_review`) or CLI (`glee review`), the reviewer's reasoning process streams to stderr in real-time. This allows you to see what the agent is thinking as it analyzes your code.
+When running reviews via MCP (`glee_review`) or CLI (`glee review`), the reviewer's reasoning process streams in real-time. This allows you to see what the agent is thinking as it analyzes your code.
+
+### Watching Live Output
+
+**Open a separate terminal and run:**
+
+```bash
+# Watch reviewer reasoning in real-time
+tail -f .glee/stream.log
+```
+
+This works for both CLI and MCP (Claude Code) invocations. The stream log captures all reviewer output as it happens.
+
+### CLI Usage
 
 ```bash
 # CLI - streams output as reviewers work
@@ -13,6 +26,19 @@ glee review src/
 # Multiple reviewers run in parallel for speed
 # Output may interleave but is fully visible
 ```
+
+### MCP Usage (Claude Code)
+
+When using `glee_review` from Claude Code:
+
+1. **MCP Log Notifications** - Glee sends `notifications/message` to Claude Code via the MCP protocol. If Claude Code displays these, you'll see reviewer output in the UI.
+
+2. **Stream Log File** - Output is also written to `.glee/stream.log`. Use `tail -f` in another terminal:
+   ```bash
+   tail -f .glee/stream.log
+   ```
+
+The MCP notification approach uses `session.send_log_message()` from within the tool handler, which sends real-time updates through the MCP protocol.
 
 ## SQLite Logging
 

@@ -224,10 +224,20 @@ class BaseAgent(ABC):
         output_lines: list[str] = []
         error_lines: list[str] = []
 
-        # Default callback: stream to stderr so user sees reasoning in real-time
+        # Default callback: stream to stderr AND log file so user can see reasoning
         def default_output_callback(line: str) -> None:
+            # Write to stderr
             sys.stderr.write(line)
             sys.stderr.flush()
+            # Also write to streaming log file for tail -f
+            if self.project_path:
+                stream_log = self.project_path / ".glee" / "stream.log"
+                try:
+                    with open(stream_log, "a") as f:
+                        f.write(line)
+                        f.flush()
+                except Exception:
+                    pass
 
         output_callback = on_output if on_output is not None else default_output_callback
 

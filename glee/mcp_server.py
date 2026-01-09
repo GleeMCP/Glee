@@ -293,6 +293,7 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
     Runs reviews in parallel with real-time streaming output to stderr so the user
     can see the reviewer's reasoning process as it happens.
     """
+    import asyncio
     import concurrent.futures
     import sys
     from pathlib import Path
@@ -300,6 +301,21 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
     from glee.agents import registry
     from glee.config import get_connected_agents, get_project_config
     from glee.logging import get_agent_logger
+
+    # Get session for sending log notifications to Claude Code
+    try:
+        ctx = server.request_context
+        session = ctx.session
+    except LookupError:
+        session = None
+
+    async def send_log(message: str) -> None:
+        """Send a log message to Claude Code via MCP notification."""
+        if session:
+            try:
+                await session.send_log_message(level="info", data=message, logger="glee")
+            except Exception:
+                pass
 
     config = get_project_config()
     if not config:
@@ -333,18 +349,40 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
     focus_str: str = arguments.get("focus", "")
     focus_list: list[str] | None = [f.strip() for f in focus_str.split(",")] if focus_str else None
 
-    # Print header to stderr so user sees what's happening
-    sys.stderr.write(f"\n{'='*60}\n")
-    sys.stderr.write(f"GLEE REVIEW: {target}\n")
-    sys.stderr.write(f"Reviewers: {', '.join(r.get('name', 'unknown') for r in reviewers)} (parallel)\n")
-    sys.stderr.write(f"{'='*60}\n\n")
+    # Print header to stderr and stream log file
+    header = f"\n{'='*60}\nGLEE REVIEW: {target}\nReviewers: {', '.join(r.get('name', 'unknown') for r in reviewers)} (parallel)\n{'='*60}\n\n"
+    sys.stderr.write(header)
     sys.stderr.flush()
 
+    # Send log notification to Claude Code
+    await send_log(header)
+
+    # Write to stream log file for tail -f visibility
+    stream_log = project_path / ".glee" / "stream.log"
+    try:
+        with open(stream_log, "a") as f:
+            f.write(header)
+            f.flush()
+    except Exception:
+        pass
+
     lines: list[str] = [f"Reviewed with {len(reviewers)} reviewer(s)", f"Target: {target}", ""]
+
+    # Get event loop for thread-safe async calls
+    loop = asyncio.get_event_loop()
+
+    def send_log_sync(message: str) -> None:
+        """Send log message from sync context (thread)."""
+        if session and loop.is_running():
+            asyncio.run_coroutine_threadsafe(send_log(message), loop)
 
     def run_single_review(reviewer_config: dict[str, Any]) -> tuple[str, str | None, str | None]:
         name = reviewer_config.get("name", "unknown")
         command = reviewer_config.get("command")
+
+        # Log reviewer start
+        send_log_sync(f"[{name}] Starting review...\n")
+
         agent = registry.get(command) if command else None
         if not agent:
             return name, None, f"Command {command} not found"
@@ -359,9 +397,29 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
         if config_focus:
             review_focus = list(set(review_focus + config_focus))
 
+        # Custom output callback that sends to MCP log notifications
+        def on_output(line: str) -> None:
+            # Write to stderr
+            sys.stderr.write(line)
+            sys.stderr.flush()
+            # Write to stream log file
+            try:
+                with open(stream_log, "a") as f:
+                    f.write(line)
+                    f.flush()
+            except Exception:
+                pass
+            # Send MCP log notification
+            send_log_sync(f"[{name}] {line}")
+
         try:
-            # stream=True is the default for run_review, output streams to stderr
-            result = agent.run_review(target=target, focus=review_focus if review_focus else None)
+            # Run with custom callback for MCP notifications
+            result = agent.run_review(
+                target=target,
+                focus=review_focus if review_focus else None,
+                stream=True,
+                on_output=on_output,
+            )
             if result.error:
                 return name, result.output, f"{result.error} (exit_code={result.exit_code})"
             return name, result.output, None
@@ -377,11 +435,17 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
             agent_name, output, error = future.result()
             results[agent_name] = (output, error)
 
-    # Print completion footer to stderr
-    sys.stderr.write(f"\n{'='*60}\n")
-    sys.stderr.write("REVIEW COMPLETE\n")
-    sys.stderr.write(f"{'='*60}\n\n")
+    # Print completion footer to stderr, stream log, and MCP notification
+    footer = f"\n{'='*60}\nREVIEW COMPLETE\n{'='*60}\n\n"
+    sys.stderr.write(footer)
     sys.stderr.flush()
+    await send_log(footer)
+    try:
+        with open(stream_log, "a") as f:
+            f.write(footer)
+            f.flush()
+    except Exception:
+        pass
 
     # Build MCP response with full output
     for agent_name, (output, error) in results.items():

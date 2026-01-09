@@ -23,7 +23,8 @@ class GeminiAgent(BaseAgent):
             sandbox: If True, run in sandbox mode.
             yolo: If True, run in auto-approval mode.
             timeout: Timeout in seconds (default 300).
-            stream: If True, stream output to stderr in real-time (default False).
+            stream: If True, stream output in real-time (default False).
+            on_output: Optional callback for each line of output (for streaming).
         """
         args = [
             self.command,
@@ -40,21 +41,31 @@ class GeminiAgent(BaseAgent):
 
         timeout = kwargs.get("timeout", 300)
         if kwargs.get("stream", False):
-            return self._run_subprocess_streaming(args, prompt=prompt, timeout=timeout)
+            return self._run_subprocess_streaming(
+                args,
+                prompt=prompt,
+                timeout=timeout,
+                on_output=kwargs.get("on_output"),
+            )
         return self._run_subprocess(args, prompt=prompt, timeout=timeout)
 
     def run_review(
-        self, target: str = ".", focus: list[str] | None = None, stream: bool = True
+        self,
+        target: str = ".",
+        focus: list[str] | None = None,
+        stream: bool = True,
+        on_output: Any = None,
     ) -> AgentResult:
         """Run a code review with Gemini.
 
         Args:
             target: What to review - file path, directory, 'git:changes', 'git:staged', or description
             focus: Optional focus areas (security, performance, etc.)
-            stream: If True, stream output to stderr in real-time (default True for reviews)
+            stream: If True, stream output in real-time (default True for reviews)
+            on_output: Optional callback for each line of output
         """
         prompt = review_prompt(target, focus)
-        return self.run(prompt, sandbox=True, stream=stream)
+        return self.run(prompt, sandbox=True, stream=stream, on_output=on_output)
 
     def run_code(self, task: str, files: list[str] | None = None) -> AgentResult:
         """Run a coding task with Gemini.
