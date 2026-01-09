@@ -14,7 +14,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-Glee is the Conductor for Your AI Orchestra - an orchestration layer for AI coding agents (Claude, Codex, Gemini) with shared memory, context injection, and multi-agent collaboration.
+Glee is the Stage Manager for Your AI Orchestra - an orchestration layer for AI coding agents (Claude, Codex, Gemini) with shared memory and code review.
 
 ## Development
 
@@ -36,11 +36,12 @@ uv run glee --help
 # Initialize project (creates .glee/ and registers MCP server)
 glee init
 
-# Connect agents
-glee connect claude --role coder --domain backend,api
-glee connect codex --role reviewer --focus security,performance
+# Configure reviewers
+glee config set reviewer.primary codex
+glee config set reviewer.secondary gemini
 
-# View status (global + project)
+# View configuration
+glee config get
 glee status
 
 # Run review (flexible targets)
@@ -48,10 +49,9 @@ glee review src/main.py           # File
 glee review src/api/              # Directory
 glee review git:changes           # Uncommitted changes
 glee review git:staged            # Staged changes
-glee review "the auth module"     # Natural description
 
 # Test an agent
-glee test-agent claude --prompt "Say hello"
+glee test-agent codex --prompt "Say hello"
 
 # Run MCP server (used by Claude Code automatically)
 glee mcp
@@ -60,28 +60,27 @@ glee mcp
 ## Architecture
 
 ```
-User
-    ↓ CLI or MCP
-Glee (glee/cli.py, glee/mcp_server.py)
-    ↓ orchestrates
-Agent Registry (glee/agents/)
+User (via Claude Code)
+    ↓ MCP protocol
+Glee (glee/mcp_server.py)
     ↓ subprocess
-Claude/Codex/Gemini CLI
+Reviewer CLI (codex, claude, gemini)
 ```
 
 **Key design decisions:**
 
+- Main agent handles coding - no separate "coder" role
+- Reviewers are preferences (primary + optional secondary)
+- One reviewer at a time, user decides what feedback to apply
 - Glee invokes CLI agents via subprocess
-- Each agent has unique name (e.g., `claude-a1b2c3`) and command (e.g., `claude`)
-- Multiple coders with domain specialization
-- Multiple reviewers with focus areas
-- Parallel review execution
 - MCP server exposes Glee tools to Claude Code
+- Stream logs to `.glee/stream_logs/` for observability
 
 ## Module Structure
 
 - `glee/cli.py` - Typer CLI commands
 - `glee/config.py` - Configuration management
+- `glee/dispatch.py` - Reviewer selection
 - `glee/mcp_server.py` - MCP server for Claude Code integration
 - `glee/agents/` - Agent adapters (Claude, Codex, Gemini)
   - `base.py` - Base agent interface
@@ -89,15 +88,18 @@ Claude/Codex/Gemini CLI
   - `codex.py` - Codex CLI adapter
   - `gemini.py` - Gemini CLI adapter
   - `prompts.py` - Reusable prompt templates
+- `glee/memory/` - Persistent memory (LanceDB)
+- `glee/db/` - Database utilities (SQLite)
 
 ## MCP Tools
 
 When `glee init` is run, it registers Glee as an MCP server in `.mcp.json`. Claude Code then has access to:
 
-- `glee_status` - Show project status and connected agents
-- `glee_review` - Run multi-agent review (accepts flexible target)
-- `glee_connect` - Connect an agent to the project
-- `glee_disconnect` - Disconnect an agent
+- `glee_status` - Show project status and reviewer config
+- `glee_review` - Run code review with primary reviewer
+- `glee_config_set` - Set config value (e.g., reviewer.primary)
+- `glee_config_unset` - Unset config value (e.g., reviewer.secondary)
+- `glee_memory_*` - Memory management tools
 
 ## Config Structure
 
@@ -106,18 +108,10 @@ When `glee init` is run, it registers Glee as an MCP server in `.mcp.json`. Clau
 project:
   id: uuid
   name: project-name
-  path: /absolute/path
 
-agents:
-  - name: claude-a1b2c3 # unique ID
-    command: claude # CLI to invoke
-    role: coder
-    domain: [backend, api]
-    priority: 1
-
-dispatch:
-  coder: first # first | random | round-robin
-  reviewer: all # all | first | random
+reviewers:
+  primary: codex    # Default reviewer
+  secondary: gemini # Optional, for second opinions
 ```
 
 ## Files Created by `glee init`
@@ -125,6 +119,9 @@ dispatch:
 ```
 project/
 ├── .glee/
-│   └── config.yml    # Glee project config
-└── .mcp.json         # MCP server registration (for Claude Code)
+│   ├── config.yml      # Glee project config
+│   ├── memory.lance/   # Vector store
+│   ├── memory.duckdb   # SQL store
+│   └── stream_logs/    # Agent stdout/stderr logs
+└── .mcp.json           # MCP server registration (for Claude Code)
 ```

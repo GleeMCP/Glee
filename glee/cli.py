@@ -1,4 +1,4 @@
-"""Glee CLI - The Conductor for Your AI Orchestra."""
+"""Glee CLI - Stage Manager for Your AI Orchestra."""
 
 import os
 from pathlib import Path
@@ -13,21 +13,15 @@ from glee.logging import get_agent_logger, setup_logging
 
 app = typer.Typer(
     name="glee",
-    help="""The Conductor for Your AI Orchestra
+    help="""Stage Manager for Your AI Orchestra
 
-Orchestrate multiple AI coding agents (Claude, Codex, Gemini) with:
-  - Multiple coders with domain specialization
-  - Multiple reviewers with focus areas
-  - Shared memory and context injection
-  - Dispute resolution with judge role
+Glee orchestrates AI coding agents with shared memory and code review.
 
 Quick start:
   glee init                              Initialize project
-  glee connect claude --role coder       Add a coder
-  glee connect codex --role reviewer     Add a reviewer
-  glee connect claude --role judge       Add a judge (for disputes)
-  glee status                            View connected agents
-  glee review src/                       Run multi-agent review
+  glee config set reviewer.primary codex Set primary reviewer
+  glee status                            View configuration
+  glee review src/                       Run code review
 """,
     no_args_is_help=True,
 )
@@ -53,17 +47,15 @@ def main_callback() -> None:
     glee_dir = project_path / ".glee"
     if glee_dir.exists():
         setup_logging(project_path)
-        # Initialize agent logger for run tracking
         get_agent_logger(project_path)
     else:
-        setup_logging(None)  # Console only
+        setup_logging(None)
 
 
 @app.command()
 def start():
     """Start the Glee daemon."""
     console.print("[green]Starting Glee daemon...[/green]")
-    # TODO: Implement daemon start
     console.print("[yellow]Not implemented yet[/yellow]")
 
 
@@ -71,19 +63,16 @@ def start():
 def stop():
     """Stop the Glee daemon."""
     console.print("[red]Stopping Glee daemon...[/red]")
-    # TODO: Implement daemon stop
     console.print("[yellow]Not implemented yet[/yellow]")
 
 
 def check_mcp_registration(project_path: str | None = None) -> bool:
     """Check if Glee MCP server is registered in project's .mcp.json."""
     import json
-    from pathlib import Path
 
     if project_path is None:
         project_path = os.getcwd()
 
-    # Project-local MCP config
     mcp_config = Path(project_path) / ".mcp.json"
     if not mcp_config.exists():
         return False
@@ -99,9 +88,9 @@ def check_mcp_registration(project_path: str | None = None) -> bool:
 
 @app.command()
 def status():
-    """Show Glee global status and current project status."""
+    """Show Glee status and current project configuration."""
     from glee.agents import registry
-    from glee.config import get_connected_agents, get_project_config
+    from glee.config import get_project_config, get_reviewers
 
     # === Global Status ===
     console.print(f"[bold]Glee v{get_version()}[/bold]")
@@ -127,159 +116,183 @@ def status():
 
     project = config.get("project", {})
     console.print(f"[bold]Project: {project.get('name')}[/bold]")
-    console.print(f"├─ Path: {project.get('path')}")
 
-    # MCP Server registration (project-local)
+    # MCP Server registration
     mcp_registered = check_mcp_registration()
     mcp_status = "[green]registered ✓[/green]" if mcp_registered else "[dim]not registered[/dim]"
     console.print(f"├─ MCP: {mcp_status}")
 
-    # Show connected agents
-    coders = get_connected_agents(role="coder")
-    reviewers = get_connected_agents(role="reviewer")
-    judges = get_connected_agents(role="judge")
+    # Show reviewers
+    reviewers = get_reviewers()
+    primary = reviewers.get("primary", "codex")
+    secondary = reviewers.get("secondary")
 
-    all_agents: list[str] = []
-    for c in coders:
-        cmd = c.get("command")
-        agent = registry.get(cmd) if cmd else None
-        available = "✓" if agent and agent.is_available() else "✗"
-        domain = ", ".join(c.get("domain", [])) or "general"
-        all_agents.append(f"[{available}] {c.get('name')} (coder) → {domain}")
+    primary_agent = registry.get(primary)
+    primary_available = "✓" if primary_agent and primary_agent.is_available() else "✗"
+    console.print(f"├─ Primary reviewer: [{primary_available}] {primary}")
 
-    for r in reviewers:
-        cmd = r.get("command")
-        agent = registry.get(cmd) if cmd else None
-        available = "✓" if agent and agent.is_available() else "✗"
-        focus = ", ".join(r.get("focus", [])) or "general"
-        all_agents.append(f"[{available}] {r.get('name')} (reviewer) → {focus}")
-
-    for j in judges:
-        cmd = j.get("command")
-        agent = registry.get(cmd) if cmd else None
-        available = "✓" if agent and agent.is_available() else "✗"
-        all_agents.append(f"[{available}] {j.get('name')} (judge) → arbitration")
-
-    if all_agents:
-        console.print("└─ Agents:")
-        for i, agent_line in enumerate(all_agents):
-            is_last = i == len(all_agents) - 1
-            prefix = "   └─" if is_last else "   ├─"
-            console.print(f"{prefix} {agent_line}")
+    if secondary:
+        secondary_agent = registry.get(secondary)
+        secondary_available = "✓" if secondary_agent and secondary_agent.is_available() else "✗"
+        console.print(f"└─ Secondary reviewer: [{secondary_available}] {secondary}")
     else:
-        console.print("└─ Agents: [dim]none connected[/dim]")
+        console.print("└─ Secondary reviewer: [dim]not set[/dim]")
 
 
 @app.command()
 def agents():
-    """List connected agents by role."""
+    """List available agent CLIs."""
     from glee.agents import registry
 
-    table = Table(title="Registered Agents")
+    table = Table(title="Available Agent CLIs")
     table.add_column("Name", style="cyan")
     table.add_column("Command", style="green")
-    table.add_column("Capabilities", style="yellow")
     table.add_column("Available", style="magenta")
 
     for name, agent in registry.agents.items():
-        available = "Yes" if agent.is_available() else "No"
-        table.add_row(
-            name,
-            agent.command,
-            ", ".join(agent.capabilities),
-            available,
-        )
+        available = "[green]Yes[/green]" if agent.is_available() else "[red]No[/red]"
+        table.add_row(name, agent.command, available)
 
     console.print(table)
 
 
-@app.command()
-def connect(
-    command: str = typer.Argument(..., help="CLI command (claude, codex, gemini)"),
-    role: str = typer.Option(..., "--role", "-r", help="Role: coder, reviewer, or judge"),
-    domain: str | None = typer.Option(None, "--domain", "-d", help="Domain areas for coders (comma-separated)"),
-    focus: str | None = typer.Option(None, "--focus", "-f", help="Focus areas for reviewers (comma-separated)"),
-    priority: int | None = typer.Option(None, "--priority", "-p", help="Priority for coders (lower = higher priority)"),
+# Config subcommands
+config_app = typer.Typer(help="Configuration management")
+app.add_typer(config_app, name="config")
+
+
+# Supported config keys
+CONFIG_KEYS = {
+    "reviewer.primary": "Primary reviewer CLI (codex, claude, gemini)",
+    "reviewer.secondary": "Secondary reviewer CLI for second opinions",
+}
+
+
+@config_app.command("set")
+def config_set(
+    key: str = typer.Argument(..., help="Config key (e.g., reviewer.primary)"),
+    value: str = typer.Argument(..., help="Value to set"),
 ):
-    """Connect an agent with a role to the current project."""
+    """Set a configuration value.
+
+    Examples:
+        glee config set reviewer.primary codex
+        glee config set reviewer.secondary gemini
+    """
     from glee.agents import registry
-    from glee.config import connect_agent, get_project_config
+    from glee.config import get_project_config, set_reviewer
 
-    # Validate project is initialized
     config = get_project_config()
     if not config:
         console.print("[red]Project not initialized. Run 'glee init' first.[/red]")
         raise typer.Exit(1)
 
-    # Validate command
-    if command not in registry.agents:
-        console.print(f"[red]Unknown command: {command}[/red]")
-        console.print(f"Available: {', '.join(registry.agents.keys())}")
+    if key not in CONFIG_KEYS:
+        console.print(f"[red]Unknown config key: {key}[/red]")
+        console.print("\nAvailable keys:")
+        for k, desc in CONFIG_KEYS.items():
+            console.print(f"  {k}: {desc}")
         raise typer.Exit(1)
 
-    # Validate role
-    if role not in ("coder", "reviewer", "judge"):
-        console.print(f"[red]Invalid role: {role}[/red]")
-        console.print("Valid roles: coder, reviewer, judge")
-        raise typer.Exit(1)
+    if key.startswith("reviewer."):
+        tier = key.split(".")[1]  # "primary" or "secondary"
 
-    # Check CLI is available
-    agent_instance = registry.agents[command]
-    if not agent_instance.is_available():
-        console.print(f"[yellow]Warning: {command} CLI is not installed[/yellow]")
+        # Validate command
+        if value not in registry.agents:
+            console.print(f"[red]Unknown reviewer: {value}[/red]")
+            console.print(f"Available: {', '.join(registry.agents.keys())}")
+            raise typer.Exit(1)
 
-    # Parse comma-separated values
-    domain_list = [d.strip() for d in domain.split(",")] if domain else None
-    focus_list = [f.strip() for f in focus.split(",")] if focus else None
+        # Check CLI is available
+        agent_instance = registry.agents[value]
+        if not agent_instance.is_available():
+            console.print(f"[yellow]Warning: {value} CLI is not installed[/yellow]")
 
-    # Connect the agent
-    agent_config = connect_agent(
-        command=command,
-        role=role,
-        domain=domain_list,
-        focus=focus_list,
-        priority=priority,
-    )
-
-    logger.info(f"Connected agent {agent_config['name']} ({command}) as {role}")
-    console.print(f"[green]Connected {agent_config['name']} ({command}) as {role}[/green]")
-    if domain_list:
-        console.print(f"  Domain: {', '.join(domain_list)}")
-    if focus_list:
-        console.print(f"  Focus: {', '.join(focus_list)}")
-    if priority is not None:
-        console.print(f"  Priority: {priority}")
+        try:
+            reviewers = set_reviewer(command=value, tier=tier)
+            console.print(f"[green]Set {key} = {value}[/green]")
+        except ValueError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1)
 
 
-@app.command()
-def disconnect(
-    agent: str = typer.Argument(..., help="Agent name (claude, codex, gemini)"),
-    role: str = typer.Option(None, "--role", "-r", help="Role to disconnect (all if not specified)"),
+@config_app.command("unset")
+def config_unset(
+    key: str = typer.Argument(..., help="Config key to unset"),
 ):
-    """Disconnect an agent from the current project."""
-    from glee.config import disconnect_agent, get_project_config
+    """Unset a configuration value.
 
-    # Validate project is initialized
+    Examples:
+        glee config unset reviewer.secondary
+    """
+    from glee.config import clear_reviewer, get_project_config
+
     config = get_project_config()
     if not config:
         console.print("[red]Project not initialized. Run 'glee init' first.[/red]")
         raise typer.Exit(1)
 
-    # Disconnect the agent
-    success = disconnect_agent(agent_name=agent, role=role)
+    if key == "reviewer.primary":
+        console.print("[red]Cannot unset primary reviewer. Use 'glee config set' to change it.[/red]")
+        raise typer.Exit(1)
 
-    if success:
-        if role:
-            console.print(f"[green]Disconnected {agent} from {role} role[/green]")
+    if key == "reviewer.secondary":
+        if clear_reviewer(tier="secondary"):
+            console.print(f"[green]Unset {key}[/green]")
         else:
-            console.print(f"[green]Disconnected {agent} from all roles[/green]")
+            console.print(f"[yellow]{key} was not set[/yellow]")
+        return
+
+    console.print(f"[red]Unknown config key: {key}[/red]")
+    raise typer.Exit(1)
+
+
+@config_app.command("get")
+def config_get(
+    key: str | None = typer.Argument(None, help="Config key to get (or omit to show all)"),
+):
+    """Get configuration value(s).
+
+    Examples:
+        glee config get                    Show all config
+        glee config get reviewer.primary   Show specific key
+    """
+    from glee.config import get_project_config, get_reviewers
+
+    config = get_project_config()
+    if not config:
+        console.print("[red]Project not initialized. Run 'glee init' first.[/red]")
+        raise typer.Exit(1)
+
+    reviewers = get_reviewers()
+
+    if key is None:
+        # Show all config
+        console.print("[bold]Configuration:[/bold]")
+        console.print(f"  reviewer.primary = {reviewers.get('primary', 'codex')}")
+        secondary = reviewers.get("secondary")
+        if secondary:
+            console.print(f"  reviewer.secondary = {secondary}")
+        else:
+            console.print("  reviewer.secondary = [dim](not set)[/dim]")
+        return
+
+    if key == "reviewer.primary":
+        console.print(reviewers.get("primary", "codex"))
+    elif key == "reviewer.secondary":
+        secondary = reviewers.get("secondary")
+        if secondary:
+            console.print(secondary)
+        else:
+            console.print("[dim](not set)[/dim]")
     else:
-        console.print(f"[yellow]Agent {agent} was not connected[/yellow]")
+        console.print(f"[red]Unknown config key: {key}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command()
 def init(
-    agent: str | None = typer.Argument(None, help="Primary agent (claude, codex, gemini, opencode, cursor, etc.)"),
+    agent: str | None = typer.Argument(None, help="Primary agent (claude, codex, gemini, etc.)"),
     new_id: bool = typer.Option(False, "--new-id", help="Generate new project ID"),
 ):
     """Initialize Glee in current directory.
@@ -287,9 +300,7 @@ def init(
     Examples:
         glee init           # Prompts for agent choice
         glee init claude    # Integrate with Claude Code
-        glee init codex     # Integrate with Codex
     """
-    import os
     import uuid
 
     from glee.config import init_project
@@ -299,27 +310,20 @@ def init(
         "mistral", "vibe", "cursor", "trae", "antigravity"
     ]
 
-    # If no agent specified, prompt user
     if agent is None:
         console.print("[bold]Which coding agent do you primarily use?[/bold]")
         console.print("  1. claude       (Claude Code)")
         console.print("  2. codex        (OpenAI Codex)")
         console.print("  3. gemini       (Google Gemini)")
         console.print("  4. opencode     (OpenCode)")
-        console.print("  5. crush        (Crush)")
-        console.print("  6. mistral      (Mistral)")
-        console.print("  7. vibe         (Vibe)")
-        console.print("  8. cursor       (Cursor)")
-        console.print("  9. trae         (Trae)")
-        console.print(" 10. antigravity  (Antigravity)")
-        console.print(" 11. none         (Skip agent integration)")
+        console.print("  5. cursor       (Cursor)")
+        console.print("  6. none         (Skip agent integration)")
         console.print()
-        choice = typer.prompt("Enter choice (1-11 or agent name)", default="1")
+        choice = typer.prompt("Enter choice (1-6 or agent name)", default="1")
 
         choice_map = {
-            "1": "claude", "2": "codex", "3": "gemini", "4": "opencode",
-            "5": "crush", "6": "mistral", "7": "vibe", "8": "cursor",
-            "9": "trae", "10": "antigravity", "11": None
+            "1": "claude", "2": "codex", "3": "gemini",
+            "4": "opencode", "5": "cursor", "6": None
         }
         if choice in choice_map:
             agent = choice_map[choice]
@@ -331,7 +335,6 @@ def init(
             console.print(f"[red]Invalid choice: {choice}[/red]")
             raise typer.Exit(1)
 
-    # Validate agent if provided
     if agent is not None and agent not in valid_agents:
         console.print(f"[red]Unknown agent: {agent}[/red]")
         console.print(f"Valid agents: {', '.join(valid_agents)}")
@@ -341,117 +344,89 @@ def init(
     project_id = str(uuid.uuid4()) if new_id else None
 
     config = init_project(project_path, project_id, agent=agent)
-    console.print(f"[green]Initialized Glee project:[/green]")
+    console.print("[green]Initialized Glee project:[/green]")
     console.print(f"  ID: {config['project']['id']}")
-    console.print(f"  Path: {config['project']['path']}")
     console.print(f"  Config: .glee/config.yml")
 
-    # Show agent integration status
+    reviewers = config.get("reviewers", {})
+    console.print(f"  Primary reviewer: {reviewers.get('primary', 'codex')}")
+
     if agent == "claude":
         if config.get("_mcp_registered"):
-            console.print(f"  MCP: [green].mcp.json created[/green]")
+            console.print("  MCP: [green].mcp.json created[/green]")
         else:
-            console.print(f"  MCP: [dim].mcp.json already exists[/dim]")
+            console.print("  MCP: [dim].mcp.json already exists[/dim]")
         if config.get("_hook_registered"):
-            console.print(f"  Hook: [green]SessionStart hook registered[/green]")
+            console.print("  Hook: [green]SessionStart hook registered[/green]")
         else:
-            console.print(f"  Hook: [dim]already configured[/dim]")
-    elif agent == "codex":
-        console.print(f"  Codex: [yellow]integration not yet implemented[/yellow]")
-    elif agent == "gemini":
-        console.print(f"  Gemini: [yellow]integration not yet implemented[/yellow]")
-    else:
-        console.print(f"  Agent: [dim]no integration configured[/dim]")
+            console.print("  Hook: [dim]already configured[/dim]")
+    elif agent:
+        console.print(f"  {agent.title()}: [yellow]integration not yet implemented[/yellow]")
 
 
 @app.command()
 def review(
     target: str | None = typer.Argument(None, help="What to review: file, directory, 'git:changes', 'git:staged', or description"),
     focus: str | None = typer.Option(None, "--focus", "-f", help="Focus areas (comma-separated: security, performance, etc.)"),
-    reviewer: str | None = typer.Option(None, "--reviewer", "-r", help="Specific reviewer to use"),
+    second_opinion: bool = typer.Option(False, "--second-opinion", "-2", help="Also run secondary reviewer"),
 ) -> None:
-    """Trigger multi-reviewer workflow.
+    """Run code review with configured reviewer.
 
-    Runs reviews in parallel with real-time streaming output so you can see
-    the reviewer's reasoning process as it happens.
+    By default runs primary reviewer only. Use --second-opinion to also run secondary.
     """
-    import concurrent.futures
-
     from glee.agents import registry
     from glee.agents.base import AgentResult
-    from glee.config import get_connected_agents, get_project_config
-    from glee.dispatch import select_reviewers
+    from glee.config import get_project_config
+    from glee.dispatch import get_primary_reviewer, get_secondary_reviewer
 
-    # Validate project is initialized
     config = get_project_config()
     if not config:
         console.print("[red]Project not initialized. Run 'glee init' first.[/red]")
         raise typer.Exit(1)
 
-    # Default target
     review_target = target or "."
-
-    # Get reviewers using dispatch module
-    reviewers = select_reviewers()
-    if not reviewers:
-        console.print("[red]No reviewers connected. Use 'glee connect <command> --role reviewer' first.[/red]")
-        raise typer.Exit(1)
-
-    # Filter to specific reviewer if requested (by name or command)
-    if reviewer:
-        all_reviewers = get_connected_agents(role="reviewer")
-        reviewers = [r for r in all_reviewers if r.get("name") == reviewer or r.get("command") == reviewer]
-        if not reviewers:
-            console.print(f"[red]Reviewer {reviewer} not connected[/red]")
-            raise typer.Exit(1)
-
-    # Parse focus areas
     focus_list = [f.strip() for f in focus.split(",")] if focus else None
 
-    # Show review plan
+    # Get reviewers
+    primary = get_primary_reviewer()
+    reviewers_to_run = [primary]
+
+    if second_opinion:
+        secondary = get_secondary_reviewer()
+        if secondary:
+            reviewers_to_run.append(secondary)
+        else:
+            console.print("[yellow]Warning: No secondary reviewer configured[/yellow]")
+
     console.print("[bold]Review Plan[/bold]")
     console.print(f"  Target: {review_target}")
-    console.print(f"  Reviewers: {', '.join(r.get('name', 'unknown') for r in reviewers)} (parallel)")
+    console.print(f"  Reviewer(s): {', '.join(reviewers_to_run)}")
     if focus_list:
         console.print(f"  Focus: {', '.join(focus_list)}")
     console.print()
 
-    reviewer_names = [r.get('name', 'unknown') for r in reviewers]
-    logger.info(f"Starting review with reviewers: {', '.join(reviewer_names)}")
-    console.print("[green]Running reviews (streaming output)...[/green]\n")
+    logger.info(f"Starting review with: {', '.join(reviewers_to_run)}")
+    console.print("[green]Running review...[/green]\n")
 
-    # Run reviews in parallel
     results: dict[str, dict[str, Any]] = {}
 
-    def run_single_review(
-        reviewer_config: dict[str, Any],
-    ) -> tuple[str, AgentResult | None, str | None]:
-        name = reviewer_config.get("name", "unknown")
-        command = reviewer_config.get("command")
-        agent = registry.get(command) if command else None
+    def run_single_review(reviewer_cli: str) -> tuple[str, AgentResult | None, str | None]:
+        agent = registry.get(reviewer_cli)
         if not agent:
-            return name, None, f"Command {command} not found in registry"
+            return reviewer_cli, None, f"CLI {reviewer_cli} not found in registry"
         if not agent.is_available():
-            return name, None, f"CLI {command} not installed"
-
-        # Merge focus areas
-        review_focus: list[str] = focus_list or []
-        config_focus = reviewer_config.get("focus")
-        if config_focus:
-            review_focus = list(set(review_focus + config_focus))
+            return reviewer_cli, None, f"CLI {reviewer_cli} not installed"
 
         try:
-            # stream=True is the default for run_review, output streams to stderr
-            result = agent.run_review(target=review_target, focus=review_focus if review_focus else None)
-            return name, result, None
+            result = agent.run_review(target=review_target, focus=focus_list)
+            return reviewer_cli, result, None
         except Exception as e:
-            return name, None, str(e)
+            return reviewer_cli, None, str(e)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(reviewers)) as executor:
-        futures = {executor.submit(run_single_review, r): r for r in reviewers}
-        for future in concurrent.futures.as_completed(futures):
-            agent_name, result, error = future.result()
-            results[agent_name] = {"result": result, "error": error}
+    # Run reviews (sequentially for now, could parallelize if both requested)
+    for reviewer_cli in reviewers_to_run:
+        name, result, error = run_single_review(reviewer_cli)
+        results[name] = {"result": result, "error": error}
 
     # Display summary
     console.print()
@@ -459,60 +434,30 @@ def review(
     console.print("=" * 60)
 
     all_approved = True
-    for agent_name, data in results.items():
+    for reviewer_name, data in results.items():
         if data["error"]:
-            console.print(f"  {agent_name}: [red]Error[/red]")
+            console.print(f"  {reviewer_name}: [red]Error - {data['error']}[/red]")
             all_approved = False
         elif data["result"]:
             result = data["result"]
             if result.error:
-                console.print(f"  {agent_name}: [red]Error[/red]")
+                console.print(f"  {reviewer_name}: [red]Error[/red]")
                 all_approved = False
             else:
-                # Check for approval
                 if "NEEDS_CHANGES" in result.output.upper():
-                    console.print(f"  {agent_name}: [yellow]Changes requested[/yellow]")
+                    console.print(f"  {reviewer_name}: [yellow]Changes requested[/yellow]")
                     all_approved = False
                 else:
-                    console.print(f"  {agent_name}: [green]Approved[/green]")
+                    console.print(f"  {reviewer_name}: [green]Approved[/green]")
 
     console.print()
     console.print("=" * 60)
     if all_approved:
-        logger.info("Review completed: all reviewers approved")
-        console.print("[bold green]✓ All reviewers approved[/bold green]")
+        logger.info("Review completed: approved")
+        console.print("[bold green]✓ Approved[/bold green]")
     else:
         logger.warning("Review completed: changes requested")
         console.print("[bold yellow]⚠ Changes requested[/bold yellow]")
-
-
-@app.command()
-def overview():
-    """Show project overview: agents and memory summary."""
-    import os
-
-    from glee.config import get_project_context
-    from glee.memory import Memory
-
-    ctx = get_project_context()
-    memory_ctx = ""
-
-    # Get memory context if available
-    try:
-        memory = Memory(os.getcwd())
-        memory_ctx = memory.get_context()
-        memory.close()
-    except Exception:
-        pass  # Memory not initialized yet
-
-    if not ctx and not memory_ctx:
-        console.print("[yellow]No project found. Run 'glee init' first.[/yellow]")
-        return
-
-    if ctx:
-        console.print(ctx)
-    if memory_ctx:
-        console.print(memory_ctx)
 
 
 @app.command()
@@ -552,12 +497,10 @@ app.add_typer(memory_app, name="memory")
 
 @memory_app.command("add")
 def memory_add(
-    category: str = typer.Argument(..., help="Category (e.g., architecture, convention, review, decision, or custom)"),
+    category: str = typer.Argument(..., help="Category (e.g., architecture, convention, review, decision)"),
     content: str = typer.Argument(..., help="Content to remember"),
 ):
     """Add a memory entry."""
-    import os
-
     from glee.memory import Memory
 
     try:
@@ -577,8 +520,6 @@ def memory_search(
     limit: int = typer.Option(5, "--limit", "-l", help="Max results"),
 ):
     """Search memories by semantic similarity."""
-    import os
-
     from glee.memory import Memory
 
     try:
@@ -604,8 +545,6 @@ def memory_list(
     category: str | None = typer.Argument(None, help="Optional category filter"),
 ):
     """List all memories, optionally filtered by category."""
-    import os
-
     from glee.memory import Memory
 
     try:
@@ -652,8 +591,6 @@ def memory_delete(
     memory_id: str = typer.Argument(..., help="Memory ID to delete"),
 ):
     """Delete a specific memory entry."""
-    import os
-
     from glee.memory import Memory
 
     try:
@@ -676,11 +613,8 @@ def memory_delete_category(
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
 ):
     """Delete all memories in a specific category."""
-    import os
-
     from glee.memory import Memory
 
-    # Confirm unless --force
     if not force:
         if not typer.confirm(f"Delete all memories in '{category}'?"):
             console.print("[dim]Cancelled[/dim]")
@@ -701,11 +635,8 @@ def memory_delete_all(
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
 ):
     """Delete ALL memories. Use with extreme caution."""
-    import os
-
     from glee.memory import Memory
 
-    # Confirm unless --force
     if not force:
         if not typer.confirm("Delete ALL memories? This cannot be undone."):
             console.print("[dim]Cancelled[/dim]")
@@ -724,8 +655,6 @@ def memory_delete_all(
 @memory_app.command("overview")
 def memory_overview():
     """Show formatted memory overview (for LLM context)."""
-    import os
-
     from glee.memory import Memory
 
     try:
@@ -746,8 +675,6 @@ def memory_overview():
 @memory_app.command("stats")
 def memory_stats():
     """Show memory statistics."""
-    import os
-
     from glee.memory import Memory
 
     try:
@@ -788,14 +715,11 @@ app.add_typer(logs_app, name="logs")
 
 @logs_app.command("show")
 def logs_show(
-    level: str | None = typer.Option(None, "--level", "-l", help="Filter by level (DEBUG, INFO, WARNING, ERROR)"),
+    level: str | None = typer.Option(None, "--level", "-l", help="Filter by level"),
     search: str | None = typer.Option(None, "--search", "-s", help="Search in message text"),
     limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
 ):
     """Show recent logs."""
-    import os
-    from pathlib import Path
-
     from glee.logging import query_logs
 
     project_path = Path(os.getcwd())
@@ -814,7 +738,7 @@ def logs_show(
             "ERROR": "red",
         }.get(log["level"], "white")
 
-        timestamp = log["timestamp"][:19]  # Trim microseconds
+        timestamp = log["timestamp"][:19]
         console.print(
             f"[dim]{timestamp}[/dim] [{level_color}]{log['level']:8}[/{level_color}] {log['message']}"
         )
@@ -823,9 +747,6 @@ def logs_show(
 @logs_app.command("stats")
 def logs_stats():
     """Show log statistics."""
-    import os
-    from pathlib import Path
-
     from glee.logging import get_log_stats
 
     project_path = Path(os.getcwd())
@@ -845,14 +766,11 @@ def logs_stats():
 
 @logs_app.command("agents")
 def logs_agents(
-    agent: str | None = typer.Option(None, "--agent", "-a", help="Filter by agent (claude, codex, gemini)"),
+    agent: str | None = typer.Option(None, "--agent", "-a", help="Filter by agent"),
     success_only: bool = typer.Option(False, "--success", "-s", help="Only show successful runs"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ):
     """Show agent run history."""
-    import os
-    from pathlib import Path
-
     from glee.logging import query_agent_logs
 
     project_path = Path(os.getcwd())
@@ -877,14 +795,7 @@ def logs_agents(
         prompt = (log["prompt"][:37] + "...") if len(log["prompt"]) > 40 else log["prompt"]
         prompt = prompt.replace("\n", " ")
 
-        table.add_row(
-            log["id"],
-            timestamp,
-            log["agent"],
-            duration,
-            status,
-            prompt,
-        )
+        table.add_row(log["id"], timestamp, log["agent"], duration, status, prompt)
 
     console.print(table)
 
@@ -892,12 +803,9 @@ def logs_agents(
 @logs_app.command("detail")
 def logs_detail(
     log_id: str = typer.Argument(..., help="Log ID to show details for"),
-    raw: bool = typer.Option(False, "--raw", "-r", help="Show raw output instead of parsed"),
+    raw: bool = typer.Option(False, "--raw", "-r", help="Show raw output"),
 ):
     """Show details of a specific agent log."""
-    import os
-    from pathlib import Path
-
     from glee.logging import get_agent_log
 
     project_path = Path(os.getcwd())

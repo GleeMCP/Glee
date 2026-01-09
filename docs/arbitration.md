@@ -1,47 +1,50 @@
-# Arbitration System Design
+# Review Feedback System Design
 
 ## Overview
 
-Glee's arbitration system handles disagreements between coder and reviewer agents. It introduces a **judge** role and **severity levels** to ensure code quality while giving users control over dispute resolution.
+Glee's review system provides structured code review feedback from configured reviewers. The main agent (the one the user talks to) writes code, and reviewers provide feedback using **severity levels** to help users prioritize what to fix.
 
-## Roles
+## Simplified Model
 
-| Role | Purpose | Example Agents |
-|------|---------|----------------|
-| Coder | Writes and modifies code | Claude Code |
-| Reviewer | Reviews code, identifies issues | Codex, Gemini |
-| Judge | Arbitrates disputes between coder and reviewer | Claude (fresh instance) |
+```
+Main Agent (user's agent, e.g., Claude Code)
+    │
+    │ writes code
+    ▼
+Reviewer (primary: codex, secondary: gemini)
+    │
+    │ returns structured feedback
+    ▼
+User decides what to apply
+```
 
-The judge only intervenes when there is a dispute. It does not participate in the standard review flow.
-
-## Design Rules
-
-1. **No fallback agent** - Do not create a "catch-all" agent with no domain. Each agent should have clear specialization.
-
-2. **No additional reviewers during dispute** - When a dispute occurs, do not bring in more reviewers. Resolve the dispute with the existing review using judge/human/discard.
-
-3. **Domain mismatch uses first coder** - If no coder has a matching domain for a task, use the first available coder. Do not fail or prompt.
+**Key principles:**
+- The main agent handles coding - no separate "coder" role
+- One reviewer at a time (primary first)
+- User can request a second opinion (secondary reviewer)
+- Maximum 2 reviewers per review cycle
+- User always decides what feedback to apply
 
 ## Review Severity Levels
 
 ### Opinion Levels
 
-| Level | Meaning | Mandatory? | Coder Can Discard? |
-|-------|---------|------------|-------------------|
-| MUST | Required change | Yes | No |
-| SHOULD | Recommended change | No | Yes |
+| Level | Meaning | Priority |
+|-------|---------|----------|
+| MUST | Required change - critical issue | High |
+| SHOULD | Recommended change - improvement | Medium |
 
 ### Issue Priority Levels
 
-| Level | Meaning | Mandatory? | Coder Can Discard? |
-|-------|---------|------------|-------------------|
-| HIGH | Critical issue | Yes | No |
-| MEDIUM | Moderate issue | No | Yes |
-| LOW | Minor issue | No | Yes |
+| Level | Meaning | Priority |
+|-------|---------|----------|
+| HIGH | Critical issue - security, correctness | High |
+| MEDIUM | Moderate issue - performance, maintainability | Medium |
+| LOW | Minor issue - style, naming | Low |
 
 ## Review Output Format
 
-Reviewers must structure their feedback using severity tags:
+Reviewers structure their feedback using severity tags:
 
 ```
 [MUST] Fix SQL injection vulnerability in query builder
@@ -52,217 +55,107 @@ Reviewers must structure their feedback using severity tags:
 [LOW] Variable 'x' could have more descriptive name
 ```
 
-## Coder Prompt Guidelines
+## Review Flow
 
-When invoking the coder to process review feedback, use a prompt that discourages ego and encourages collaboration:
-
-```
-You received the following review feedback on your code:
-
-{review_items}
-
-Instructions:
-- Default stance: the reviewer is probably right. Accept and implement all valid feedback.
-- Do NOT disagree unless there is a clear, objective technical reason.
-
-Valid reasons to disagree:
-- Factual error in the review (reviewer misread the code)
-- Suggestion would break existing functionality
-- Suggestion conflicts with explicit project requirements
-- Reviewer misunderstood the context or intent
-
-Invalid reasons to disagree:
-- Personal preference or style
-- "I think my way is better"
-- Minor differences that don't affect correctness
-- Ego or defensiveness
-
-If you disagree with a MUST or HIGH item:
-- You MUST provide specific technical justification
-- Cite concrete evidence (code references, requirements, tests)
-- Be objective, not defensive
-
-Remember: You are a collaborative agent, not a defender of your code.
-Reviewers help improve code quality. Embrace their feedback.
-```
-
-## Workflow
-
-### Standard Flow (No Dispute)
+### Standard Flow
 
 ```
-Coder writes code
-       ↓
-Reviewer analyzes code
-       ↓
+User: "Review my code"
+         ↓
+Glee invokes primary reviewer (e.g., codex)
+         ↓
 Reviewer returns structured feedback
-       ↓
-Coder processes feedback:
-  - MUST/HIGH items → implement changes
-  - SHOULD/MEDIUM/LOW items → implement or discard
-       ↓
-Done
+         ↓
+User sees feedback with severity levels
+         ↓
+User decides:
+  a) Apply all - fix everything
+  b) Apply HIGH/MUST only - fix critical issues
+  c) Discard - ignore feedback
+  d) Second opinion - get another reviewer's take
 ```
 
-### Dispute Flow
+### Second Opinion Flow
 
-A dispute occurs when the coder disagrees with a **mandatory** item (MUST or HIGH).
-
-**With judge configured:**
 ```
-Coder disagrees with MUST or HIGH item
-              ↓
-     ┌────────────────────────┐
-     │   How to resolve?      │
-     │                        │
-     │   1. Use AI judge      │
-     │   2. I'll decide       │
-     │   3. Discard opinion   │
-     └────────────────────────┘
-              ↓
-        User selects
-              ↓
-     Execute chosen path
+User requests second opinion
+         ↓
+Glee invokes secondary reviewer (e.g., gemini)
+         ↓
+User sees both feedbacks side by side
+         ↓
+User decides what to apply from each
 ```
-
-**Without judge configured:**
-```
-Coder disagrees with MUST or HIGH item
-              ↓
-     ┌────────────────────────┐
-     │   How to resolve?      │
-     │                        │
-     │   1. I'll decide       │
-     │   2. Discard opinion   │
-     │                        │
-     │   (yellow) Tip: You    │
-     │   can assign a judge   │
-     │   with: glee connect   │
-     │   <agent> --role judge │
-     └────────────────────────┘
-              ↓
-        User selects
-              ↓
-     Execute chosen path
-```
-
-### Judge Arbitration
-
-When the user selects "Use AI judge":
-
-1. Judge receives:
-   - Original code
-   - Reviewer's feedback (the disputed item)
-   - Coder's objection and reasoning
-
-2. Judge evaluates:
-   - Is the review valid and applicable?
-   - Is the coder's objection reasonable?
-   - What is the best path forward?
-
-3. Judge decides:
-   - **ENFORCE** - Coder must implement the review
-   - **DISMISS** - Review is invalid, coder continues
-   - **ESCALATE** - Ambiguous case, needs human decision
 
 ## Configuration
 
 ```yaml
 # .glee/config.yml
 
-agents:
-  - name: claude-coder
-    command: claude
-    role: coder
+project:
+  id: uuid
+  name: project-name
 
-  - name: codex-reviewer
-    command: codex
-    role: reviewer
-
-  - name: claude-judge
-    command: claude
-    role: judge
-
-review:
-  # Opinions: reviewer's recommendations on code changes
-  opinions:
-    mandatory: [MUST]
-    optional: [SHOULD]
-
-  # Issues: identified problems in the code
-  issues:
-    mandatory: [HIGH]
-    optional: [MEDIUM, LOW]
-
-  on_dispute:
-    prompt_user: true    # show selection to user
-    default: judge       # default option: judge | human | discard
-
-  judge:
-    escalate_to: human   # fallback when judge is uncertain
-```
-
-## Data Flow
-
-```
-┌─────────┐    code     ┌──────────┐   structured   ┌─────────┐
-│  Coder  │ ──────────► │ Reviewer │ ──────────────►│  Coder  │
-└─────────┘             └──────────┘    review      └─────────┘
-                                                         │
-                                            [disagrees with MUST/HIGH]
-                                                         ▼
-                                                  ┌─────────────┐
-                                                  │ User Prompt │
-                                                  └─────────────┘
-                                                    │    │    │
-                                         ┌──────────┘    │    └──────────┐
-                                         ▼               ▼               ▼
-                                    ┌─────────┐    ┌─────────┐    ┌─────────┐
-                                    │  Judge  │    │  Human  │    │ Discard │
-                                    └─────────┘    └─────────┘    └─────────┘
-                                         │               │
-                                         ▼               ▼
-                                    ┌─────────────────────────┐
-                                    │ ENFORCE | DISMISS | ... │
-                                    └─────────────────────────┘
+reviewers:
+  primary: codex    # Default reviewer (required)
+  secondary: gemini # For second opinions (optional)
 ```
 
 ## CLI Commands
 
 ```bash
-# Review with arbitration enabled
-glee review src/ --arbitrate
+# Set reviewers
+glee config set reviewer.primary codex
+glee config set reviewer.secondary gemini
 
-# Configure dispute handling
-glee config set review.on_dispute.default judge
+# Clear secondary
+glee config unset reviewer.secondary
 
-# View dispute history
-glee disputes --recent 10
+# View config
+glee config get
+
+# Run review
+glee review src/                     # Review with primary
+glee review src/ --second-opinion    # Also get secondary review
+
+# View status
+glee status                          # Shows reviewer configuration
 ```
 
-## Implementation Phases
+## MCP Tools
 
-### Phase 1: Review Format
-- Define structured review output format
-- Parse severity levels from reviewer output
-- Categorize items as mandatory vs optional
+| Tool | Description |
+|------|-------------|
+| `glee_review` | Run review with primary reviewer |
+| `glee_config_set` | Set config value (e.g., reviewer.primary) |
+| `glee_config_unset` | Unset config value (e.g., reviewer.secondary) |
+| `glee_status` | Show reviewer configuration |
 
-### Phase 2: Dispute Detection
-- Detect when coder disagrees with mandatory items
-- Capture coder's objection and reasoning
-- Trigger dispute resolution flow
+## Data Flow
 
-### Phase 3: User Prompt
-- Present resolution options to user
-- Handle user selection
-- Execute chosen path
+```
+┌──────────────┐    code      ┌──────────────┐   structured   ┌──────────┐
+│  Main Agent  │ ────────────►│   Reviewer   │ ──────────────►│   User   │
+│ (writes code)│              │ (codex/etc)  │    feedback    │ (decides)│
+└──────────────┘              └──────────────┘                └──────────┘
+                                                                   │
+                                              ┌────────────────────┼────────────────────┐
+                                              ▼                    ▼                    ▼
+                                        ┌──────────┐        ┌──────────┐        ┌──────────┐
+                                        │  Apply   │        │ Discard  │        │  Second  │
+                                        │ feedback │        │ feedback │        │ opinion  │
+                                        └──────────┘        └──────────┘        └──────────┘
+```
 
-### Phase 4: Judge Agent
-- Implement judge agent interface
-- Define judge prompt template
-- Handle ENFORCE/DISMISS/ESCALATE decisions
+## Implementation Status
 
-### Phase 5: Tracking (Optional)
-- Integrate logging/tracking for reviews and disputes
-- Build dispute history
-- Add analytics for continuous improvement
+### Done
+- [x] Single reviewer flow (primary reviewer)
+- [x] Structured feedback with severity levels
+- [x] CLI commands for reviewer management
+- [x] MCP tools for Claude Code integration
+
+### TODO
+- [ ] Second opinion flag (`--second-opinion`)
+- [ ] Side-by-side feedback comparison UI
+- [ ] Feedback history and tracking

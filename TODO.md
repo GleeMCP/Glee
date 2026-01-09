@@ -13,20 +13,20 @@ Glee          = Stage manager (logistics, coordination, memory)
 
 ### Autonomy Levels
 
-| Level | Who Decides | Best For |
-|-------|-------------|----------|
-| `full_hitl` | Human approves every step | Control freaks, learning |
-| `guided` | AI suggests, human approves major decisions | Most engineers (default) |
-| `autonomous` | AI drives, human reviews at end | Vibe coders, busy engineers |
+| Level        | Who Decides                                 | Best For                    |
+| ------------ | ------------------------------------------- | --------------------------- |
+| `full_hitl`  | Human approves every step                   | Control freaks, learning    |
+| `guided`     | AI suggests, human approves major decisions | Most engineers (default)    |
+| `autonomous` | AI drives, human reviews at end             | Vibe coders, busy engineers |
 
 ```yaml
 # .glee/config.yml
 autonomy:
-  level: guided  # full_hitl | guided | autonomous
+  level: guided # full_hitl | guided | autonomous
 
   # Fine-grained controls (optional)
-  auto_apply_review: false    # Auto-apply reviewer suggestions
-  auto_spawn_subagents: true  # Let main agent spawn helpers without asking
+  auto_apply_review: false # Auto-apply reviewer suggestions
+  auto_spawn_subagents: true # Let main agent spawn helpers without asking
   require_approval_for:
     - commit
     - deploy
@@ -34,20 +34,24 @@ autonomy:
 ```
 
 ### Guardrails (all levels)
+
 - Always show what AI is doing (transparency)
 - Never auto-commit/deploy without explicit config
 - Log all decisions for audit
 
-### Observability Problem
+### Observability
+
 MCP servers can't pass stderr to clients - logs disappear into void.
 
-**Solution: Dedicated observability layer**
+**Solution: Stream logging to files**
+
+- [x] Log agent stdout/stderr to `.glee/stream_logs/`
+- [x] Daily rotation: `stdout-YYYYMMDD.log`, `stderr-YYYYMMDD.log`
 - [ ] Add OpenTelemetry integration
-- [ ] Separate logging system users can observe (not just SQLite)
-- [ ] Options: log file tailing, web dashboard, TUI viewer
-- [ ] Real-time streaming of agent activity
+- [ ] Web dashboard or TUI viewer for real-time monitoring
 
 ### Development Philosophy
+
 - **No backward compatibility concerns** - nobody uses this yet
 - Break things freely, redesign from scratch if needed
 - Ship fast, iterate faster
@@ -83,31 +87,29 @@ Subagents are for **small, scoped tasks** that can run in parallel - not for opi
 - [ ] Benchmark search performance with large memory stores
 - [ ] Consider caching frequent queries
 
-## 3. Architecture Refactor: Simplify Agent Model
+## 3. Architecture Refactor: Simplify Agent Model ✅ DONE
 
-### Problem
+### Problem (Solved)
 
-Current role-based model is confusing:
+~~Current role-based model is confusing:~~
 
-- Multiple "coders" - but which one is primary?
-- Multiple "reviewers" - what if they conflict?
-- "coder" role is redundant (the main agent IS the coder)
+- ~~Multiple "coders" - but which one is primary?~~
+- ~~Multiple "reviewers" - what if they conflict?~~
+- ~~"coder" role is redundant (the main agent IS the coder)~~
 
-### Proposed Model
+### Current Model
 
 ```
-Main Agent (the one user talks to)
-    └── Helper Agents (spawned on-demand)
-        ├── reviewer (ephemeral, for code review)
-        ├── specialist (ephemeral, for domain expertise)
-        └── judge (ephemeral, for tie-breaking conflicts)
+Main Agent (the one user talks to) = handles coding
+    └── Reviewers (configured preferences)
+        ├── primary: codex (default)
+        └── secondary: gemini (optional, for second opinions)
 ```
 
-### Key Changes
+### Implemented Changes
 
-- [ ] Remove "coder" role entirely - main agent handles coding
-- [ ] Helpers are **ephemeral**, not pre-registered
-- [ ] Simplify `.glee/config.yml`:
+- [x] Remove "coder" role entirely - main agent handles coding
+- [x] Simplify `.glee/config.yml`:
 
   ```yaml
   project:
@@ -119,8 +121,9 @@ Main Agent (the one user talks to)
     secondary: gemini # For second opinions (optional)
   ```
 
-- [ ] Update `glee connect` to configure reviewer preferences
-- [ ] Update `glee review` to spawn single reviewer
+- [x] Update CLI: `glee config set/unset/get`
+- [x] Update MCP server to use new model
+- [x] Update `glee review` to use primary reviewer
 
 ### Review Flow (User-Controlled)
 
@@ -135,16 +138,15 @@ Main Agent (the one user talks to)
    - User decides what to apply
 ```
 
-- [ ] Implement single-reviewer-at-a-time flow
-- [ ] Add "request second opinion" action
-- [ ] Cap at 2 reviewers max
+- [x] Implement single-reviewer-at-a-time flow
+- [ ] Add "request second opinion" action in CLI
+- [x] Cap at 2 reviewers max (primary + secondary)
 - [ ] UI to show/compare both reviewer feedbacks
 
-### Migration (NO NEED TO THINK ABOUT BACKWARD COMPATIBILTIY)
+### Agent2Agent (A2A) protocol
 
-- [ ] Deprecate old config format
-- [ ] Auto-migrate existing configs
-- [ ] Update documentation
+- [ ] Research A2A protocol specification
+- [ ] Implement A2A server alongside MCP server
 
 ## Future Ideas
 

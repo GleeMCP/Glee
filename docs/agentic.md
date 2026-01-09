@@ -11,7 +11,7 @@ When Glee invokes an agent via subprocess, that agent runs autonomously within i
 ## Architecture
 
 ```
-Glee (orchestrator)
+Glee (stage manager)
     ↓ subprocess call: `codex exec --json --full-auto "prompt"`
 
 Codex CLI (runs as its own process)
@@ -28,26 +28,27 @@ Codex CLI (runs as its own process)
 
 Glee
     ↓ collects output
-    ↓ orchestrates next agent
+    ↓ logs to .glee/stream_logs/
 ```
 
 ## Analogy
 
 Think of it like hiring a contractor:
 
-- **Glee** = Project manager who assigns tasks to contractors
-- **Codex/Claude/Gemini** = Skilled contractors with their own toolboxes
+- **Glee** = Stage manager who coordinates and logs everything
+- **Main Agent** (Claude Code) = Principal performer who does the coding
+- **Reviewer** (Codex/Gemini) = Quality inspector with their own expertise
 
-The project manager says "review this building's foundation" - they don't hand the contractor individual tools. The contractor shows up with their own equipment and expertise, does the job autonomously, and reports back.
+The stage manager says "review this code" - they don't hand the inspector individual tools. The inspector shows up with their own equipment and expertise, does the job autonomously, and reports back.
 
 ## What Glee Actually Does
 
 Glee doesn't give agents their capabilities. It:
 
-1. **Routes tasks** to the right agent (coder vs reviewer)
+1. **Manages reviewer preferences** (primary and secondary reviewer)
 2. **Injects context** (shared memory, project info)
-3. **Coordinates** multiple agents (parallel reviews)
-4. **Aggregates results**
+3. **Logs everything** to `.glee/stream_logs/` for observability
+4. **Aggregates results** from reviews
 
 The "agentic stuff" happens entirely within each CLI agent's process. Glee just orchestrates *who* does *what*, not *how* they do it.
 
@@ -87,6 +88,18 @@ gemini -p "prompt"
 ```
 
 ## Debugging and Logging
+
+### Stream Logs
+
+Glee captures all agent stdout/stderr to `.glee/stream_logs/`:
+
+```
+.glee/stream_logs/
+├── stdout-20250109.log    # Daily rotation
+└── stderr-20250109.log
+```
+
+Use `tail -f .glee/stream_logs/stdout-*.log` to watch in real-time.
 
 ### Codex
 

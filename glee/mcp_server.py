@@ -57,29 +57,35 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="glee_connect",
-            description="Connect an AI agent to the current project with a specific role.",
+            name="glee_config_set",
+            description="Set a configuration value. Supported keys: reviewer.primary, reviewer.secondary",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "command": {
+                    "key": {
                         "type": "string",
-                        "description": "CLI command: claude, codex, or gemini",
+                        "description": "Config key: reviewer.primary or reviewer.secondary",
                     },
-                    "role": {
+                    "value": {
                         "type": "string",
-                        "description": "Role: coder, reviewer, or judge",
-                    },
-                    "domain": {
-                        "type": "string",
-                        "description": "Domain areas for coders (comma-separated, e.g., 'backend,api')",
-                    },
-                    "focus": {
-                        "type": "string",
-                        "description": "Focus areas for reviewers (comma-separated, e.g., 'security,performance')",
+                        "description": "Value to set (codex, claude, or gemini)",
                     },
                 },
-                "required": ["command", "role"],
+                "required": ["key", "value"],
+            },
+        ),
+        Tool(
+            name="glee_config_unset",
+            description="Unset a configuration value. Only reviewer.secondary can be unset.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Config key to unset (reviewer.secondary)",
+                    },
+                },
+                "required": ["key"],
             },
         ),
         Tool(
@@ -94,20 +100,6 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["prompt"],
-            },
-        ),
-        Tool(
-            name="glee_disconnect",
-            description="Disconnect an agent from the current project.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "agent": {
-                        "type": "string",
-                        "description": "Agent name to disconnect (e.g., 'claude-a1b2c3')",
-                    },
-                },
-                "required": ["agent"],
             },
         ),
         Tool(
@@ -239,12 +231,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return await _handle_status()
     elif name == "glee_review":
         return await _handle_review(arguments)
-    elif name == "glee_connect":
-        return await _handle_connect(arguments)
+    elif name == "glee_config_set":
+        return await _handle_config_set(arguments)
+    elif name == "glee_config_unset":
+        return await _handle_config_unset(arguments)
     elif name == "glee_test":
         return await _handle_test(arguments)
-    elif name == "glee_disconnect":
-        return await _handle_disconnect(arguments)
     elif name == "glee_memory_add":
         return await _handle_memory_add(arguments)
     elif name == "glee_memory_search":
@@ -270,7 +262,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 async def _handle_status() -> list[TextContent]:
     """Handle glee_status tool call."""
     from glee.agents import registry
-    from glee.config import get_connected_agents, get_project_config
+    from glee.config import get_project_config, get_reviewers
 
     lines: list[str] = []
 
@@ -279,7 +271,7 @@ async def _handle_status() -> list[TextContent]:
     lines.append("=" * 40)
     lines.append("")
     lines.append("CLI Availability:")
-    for cli_name in ["claude", "codex", "gemini"]:
+    for cli_name in ["codex", "claude", "gemini"]:
         agent = registry.get(cli_name)
         status = "found" if agent and agent.is_available() else "not found"
         lines.append(f"  {cli_name}: {status}")
@@ -294,27 +286,16 @@ async def _handle_status() -> list[TextContent]:
     else:
         project = config.get("project", {})
         lines.append(f"Project: {project.get('name')}")
-        lines.append(f"Path: {project.get('path')}")
         lines.append("")
 
-        # Agents
-        coders = get_connected_agents(role="coder")
-        reviewers = get_connected_agents(role="reviewer")
-        judges = get_connected_agents(role="judge")
-
-        if coders or reviewers or judges:
-            lines.append("Connected Agents:")
-            for c in coders:
-                domain = ", ".join(c.get("domain", [])) or "general"
-                lines.append(f"  {c.get('name')} (coder) -> {domain}")
-            for r in reviewers:
-                focus = ", ".join(r.get("focus", [])) or "general"
-                lines.append(f"  {r.get('name')} (reviewer) -> {focus}")
-            for j in judges:
-                lines.append(f"  {j.get('name')} (judge) -> arbitration")
+        # Reviewers
+        reviewers = get_reviewers()
+        lines.append("Reviewers:")
+        lines.append(f"  Primary: {reviewers.get('primary', 'codex')}")
+        if reviewers.get("secondary"):
+            lines.append(f"  Secondary: {reviewers.get('secondary')}")
         else:
-            lines.append("No agents connected.")
-            lines.append("Use glee_connect to add agents.")
+            lines.append("  Secondary: (not set)")
 
     return [TextContent(type="text", text="\n".join(lines))]
 
@@ -322,16 +303,15 @@ async def _handle_status() -> list[TextContent]:
 async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle glee_review tool call.
 
-    Runs reviews in parallel with real-time streaming output to stderr so the user
-    can see the reviewer's reasoning process as it happens.
+    Uses the configured primary reviewer to analyze code.
     """
     import asyncio
     import concurrent.futures
-    import sys
     from pathlib import Path
 
     from glee.agents import registry
-    from glee.config import get_connected_agents, get_project_config
+    from glee.config import get_project_config
+    from glee.dispatch import get_primary_reviewer
     from glee.logging import get_agent_logger
 
     # Get session for sending log notifications to Claude Code
@@ -366,20 +346,13 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
     # Initialize agent logger for this project
     get_agent_logger(project_path)
 
-    # Get reviewers
-    reviewers = get_connected_agents(role="reviewer")
-    if not reviewers:
-        # Show available agents so Claude can ask user which to use
-        lines: list[str] = ["No reviewers connected.", ""]
-        lines.append("Available agents:")
-        for cli_name in ["claude", "codex", "gemini"]:
-            agent = registry.get(cli_name)
-            status = "installed" if agent and agent.is_available() else "not installed"
-            lines.append(f"  - {cli_name}: {status}")
-        lines.append("")
-        lines.append("Ask the user which agent to use as a reviewer, then use glee_connect.")
-        lines.append('Example: glee_connect(command="codex", role="reviewer", focus="security")')
-        return [TextContent(type="text", text="\n".join(lines))]
+    # Get primary reviewer
+    reviewer_cli = get_primary_reviewer()
+    agent = registry.get(reviewer_cli)
+    if not agent:
+        return [TextContent(type="text", text=f"Reviewer CLI '{reviewer_cli}' not found in registry.")]
+    if not agent.is_available():
+        return [TextContent(type="text", text=f"Reviewer CLI '{reviewer_cli}' not installed. Install it first.")]
 
     # Parse target - flexible input
     target: str = arguments.get("target", ".")
@@ -388,24 +361,13 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
     focus_str: str = arguments.get("focus", "")
     focus_list: list[str] | None = [f.strip() for f in focus_str.split(",")] if focus_str else None
 
-    # Print header to stderr and stream log file
-    header = f"\n{'='*60}\nGLEE REVIEW: {target}\nReviewers: {', '.join(r.get('name', 'unknown') for r in reviewers)} (parallel)\n{'='*60}\n\n"
-    sys.stderr.write(header)
-    sys.stderr.flush()
+    # Print header
+    header = f"\n{'='*60}\nGLEE REVIEW: {target}\nReviewer: {reviewer_cli}\n{'='*60}\n\n"
 
     # Send log notification to Claude Code
     await send_log(header)
 
-    # Write to stream log file for tail -f visibility
-    stream_log = project_path / ".glee" / "stream.log"
-    try:
-        with open(stream_log, "a") as f:
-            f.write(header)
-            f.flush()
-    except Exception:
-        pass
-
-    lines: list[str] = [f"Reviewed with {len(reviewers)} reviewer(s)", f"Target: {target}", ""]
+    lines: list[str] = [f"Reviewed by {reviewer_cli}", f"Target: {target}", ""]
 
     # Get running event loop for thread-safe async calls
     loop = asyncio.get_running_loop()
@@ -415,128 +377,83 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
         if session and loop.is_running():
             asyncio.run_coroutine_threadsafe(send_log(message, level=level), loop)
 
-    def run_single_review(reviewer_config: dict[str, Any]) -> tuple[str, str | None, str | None]:
-        name = reviewer_config.get("name", "unknown")
-        command = reviewer_config.get("command")
-
+    def run_review() -> tuple[str | None, str | None]:
         # Log reviewer start
-        send_log_sync(f"[{name}] Starting review...\n")
-
-        agent = registry.get(command) if command else None
-        if not agent:
-            return name, None, f"Command {command} not found"
-        if not agent.is_available():
-            return name, None, f"CLI {command} not installed"
+        send_log_sync(f"[{reviewer_cli}] Starting review...\n")
 
         # Set project_path for logging
         agent.project_path = project_path
 
-        review_focus = focus_list or []
-        config_focus = reviewer_config.get("focus")
-        if config_focus:
-            review_focus = list(set(review_focus + config_focus))
-
         # Custom output callback that sends to MCP log notifications
         def on_output(line: str) -> None:
-            # Write to stderr
-            sys.stderr.write(line)
-            sys.stderr.flush()
-            # Write to stream log file
-            try:
-                with open(stream_log, "a") as f:
-                    f.write(line)
-                    f.flush()
-            except Exception:
-                pass
-            # Send MCP log notification
-            send_log_sync(f"[{name}] {line}")
+            send_log_sync(f"[{reviewer_cli}] {line}")
 
         try:
-            # Run with custom callback for MCP notifications
             result = agent.run_review(
                 target=target,
-                focus=review_focus if review_focus else None,
+                focus=focus_list,
                 stream=True,
                 on_output=on_output,
             )
             if result.error:
-                return name, result.output, f"{result.error} (exit_code={result.exit_code})"
-            return name, result.output, None
+                return result.output, f"{result.error} (exit_code={result.exit_code})"
+            return result.output, None
         except Exception as e:
             import traceback
-            return name, None, f"{str(e)}\n{traceback.format_exc()}"
+            return None, f"{str(e)}\n{traceback.format_exc()}"
 
-    # Run reviews in parallel without blocking the event loop so log streaming works.
-    results: dict[str, tuple[str | None, str | None]] = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(reviewers)) as executor:
-        tasks = [loop.run_in_executor(executor, run_single_review, r) for r in reviewers]
-        for task in asyncio.as_completed(tasks):
-            agent_name, output, error = await task
-            results[agent_name] = (output, error)
+    # Run review in thread to not block event loop
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        output, error = await loop.run_in_executor(executor, run_review)
 
-    # Print completion footer to stderr, stream log, and MCP notification
+    # Footer
     footer = f"\n{'='*60}\nREVIEW COMPLETE\n{'='*60}\n\n"
-    sys.stderr.write(footer)
-    sys.stderr.flush()
     await send_log(footer)
-    try:
-        with open(stream_log, "a") as f:
-            f.write(footer)
-            f.flush()
-    except Exception:
-        pass
 
-    # Build MCP response with full output
-    for agent_name, (output, error) in results.items():
-        lines.append(f"=== {agent_name.upper()} ===")
-        if error:
-            lines.append(f"Error: {error}")
-        if output:
-            lines.append(output)
-        if not error and not output:
-            lines.append("(no output)")
-        lines.append("")
+    # Build MCP response
+    lines.append(f"=== {reviewer_cli.upper()} ===")
+    if error:
+        lines.append(f"Error: {error}")
+    if output:
+        lines.append(output)
+    if not error and not output:
+        lines.append("(no output)")
+    lines.append("")
 
     return [TextContent(type="text", text="\n".join(lines))]
 
 
-async def _handle_connect(arguments: dict[str, Any]) -> list[TextContent]:
-    """Handle glee_connect tool call."""
-    from glee.agents import registry
-    from glee.config import connect_agent, get_project_config
+async def _handle_config_set(arguments: dict[str, Any]) -> list[TextContent]:
+    """Handle glee_config_set tool call."""
+    from glee.config import SUPPORTED_REVIEWERS, get_project_config, set_reviewer
 
     config = get_project_config()
     if not config:
         return [TextContent(type="text", text="Project not initialized. Run 'glee init' first.")]
 
-    command: str | None = arguments.get("command")
-    role: str | None = arguments.get("role")
+    key: str | None = arguments.get("key")
+    value: str | None = arguments.get("value")
 
-    if command not in registry.agents:
-        return [TextContent(type="text", text=f"Unknown command: {command}. Available: claude, codex, gemini")]
+    if not key or not value:
+        return [TextContent(type="text", text="Both 'key' and 'value' are required.")]
 
-    if role not in ("coder", "reviewer", "judge"):
-        return [TextContent(type="text", text=f"Invalid role: {role}. Valid: coder, reviewer, judge")]
+    valid_keys = ["reviewer.primary", "reviewer.secondary"]
+    if key not in valid_keys:
+        return [TextContent(type="text", text=f"Unknown config key: {key}. Valid: {', '.join(valid_keys)}")]
 
-    domain_str: str = arguments.get("domain", "")
-    focus_str: str = arguments.get("focus", "")
-    domain_list: list[str] | None = [d.strip() for d in domain_str.split(",")] if domain_str else None
-    focus_list: list[str] | None = [f.strip() for f in focus_str.split(",")] if focus_str else None
+    if key.startswith("reviewer."):
+        tier = key.split(".")[1]
 
-    agent_config = connect_agent(
-        command=command,
-        role=role,
-        domain=domain_list,
-        focus=focus_list,
-    )
+        if value not in SUPPORTED_REVIEWERS:
+            return [TextContent(type="text", text=f"Unknown reviewer: {value}. Available: {', '.join(SUPPORTED_REVIEWERS)}")]
 
-    lines = [f"Connected {agent_config['name']} ({command}) as {role}"]
-    if domain_list:
-        lines.append(f"Domain: {', '.join(domain_list)}")
-    if focus_list:
-        lines.append(f"Focus: {', '.join(focus_list)}")
+        try:
+            reviewers = set_reviewer(command=value, tier=tier)
+            return [TextContent(type="text", text=f"Set {key} = {value}")]
+        except ValueError as e:
+            return [TextContent(type="text", text=f"Error: {e}")]
 
-    return [TextContent(type="text", text="\n".join(lines))]
+    return [TextContent(type="text", text=f"Unknown config key: {key}")]
 
 
 async def _handle_test(arguments: dict[str, Any]) -> list[TextContent]:
@@ -560,23 +477,27 @@ async def _handle_test(arguments: dict[str, Any]) -> list[TextContent]:
     return [TextContent(type="text", text=f"glee_test: {prompt}")]
 
 
-async def _handle_disconnect(arguments: dict[str, Any]) -> list[TextContent]:
-    """Handle glee_disconnect tool call."""
-    from glee.config import disconnect_agent, get_project_config
+async def _handle_config_unset(arguments: dict[str, Any]) -> list[TextContent]:
+    """Handle glee_config_unset tool call."""
+    from glee.config import clear_reviewer, get_project_config
 
     config = get_project_config()
     if not config:
         return [TextContent(type="text", text="Project not initialized. Run 'glee init' first.")]
 
-    agent_name: str | None = arguments.get("agent")
-    if not agent_name:
-        return [TextContent(type="text", text="Agent name required.")]
+    key: str | None = arguments.get("key")
 
-    success = disconnect_agent(agent_name=agent_name)
-    if success:
-        return [TextContent(type="text", text=f"Disconnected {agent_name}")]
-    else:
-        return [TextContent(type="text", text=f"Agent {agent_name} was not connected")]
+    if key == "reviewer.primary":
+        return [TextContent(type="text", text="Cannot unset primary reviewer. Use glee_config_set to change it.")]
+
+    if key == "reviewer.secondary":
+        success = clear_reviewer(tier="secondary")
+        if success:
+            return [TextContent(type="text", text=f"Unset {key}")]
+        else:
+            return [TextContent(type="text", text=f"{key} was not set.")]
+
+    return [TextContent(type="text", text=f"Unknown config key: {key}")]
 
 
 async def _handle_memory_add(arguments: dict[str, Any]) -> list[TextContent]:
