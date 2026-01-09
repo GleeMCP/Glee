@@ -89,20 +89,6 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="glee_test",
-            description="Test MCP connectivity by echoing a prompt back.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "prompt": {
-                        "type": "string",
-                        "description": "Any prompt to echo back.",
-                    },
-                },
-                "required": ["prompt"],
-            },
-        ),
-        Tool(
             name="glee_memory_add",
             description="Add a memory entry to the project's persistent memory. Use this to remember architecture decisions, code conventions, review feedback, or important decisions for future reference.",
             inputSchema={
@@ -235,8 +221,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return await _handle_config_set(arguments)
     elif name == "glee_config_unset":
         return await _handle_config_unset(arguments)
-    elif name == "glee_test":
-        return await _handle_test(arguments)
     elif name == "glee_memory_add":
         return await _handle_memory_add(arguments)
     elif name == "glee_memory_search":
@@ -448,33 +432,12 @@ async def _handle_config_set(arguments: dict[str, Any]) -> list[TextContent]:
             return [TextContent(type="text", text=f"Unknown reviewer: {value}. Available: {', '.join(SUPPORTED_REVIEWERS)}")]
 
         try:
-            reviewers = set_reviewer(command=value, tier=tier)
+            set_reviewer(command=value, tier=tier)
             return [TextContent(type="text", text=f"Set {key} = {value}")]
         except ValueError as e:
             return [TextContent(type="text", text=f"Error: {e}")]
 
     return [TextContent(type="text", text=f"Unknown config key: {key}")]
-
-
-async def _handle_test(arguments: dict[str, Any]) -> list[TextContent]:
-    """Handle glee_test tool call."""
-    prompt: str | None = arguments.get("prompt")
-    if not prompt:
-        return [TextContent(type="text", text="Prompt is required.")]
-
-    try:
-        ctx = server.request_context
-        session = ctx.session
-    except LookupError:
-        session = None
-
-    if session:
-        try:
-            await session.send_log_message(level=cast(LoggingLevel, "debug"), data=f"glee_test: {prompt}", logger="glee")
-        except Exception:
-            pass
-
-    return [TextContent(type="text", text=f"glee_test: {prompt}")]
 
 
 async def _handle_config_unset(arguments: dict[str, Any]) -> list[TextContent]:
