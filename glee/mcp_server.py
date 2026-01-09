@@ -544,6 +544,19 @@ async def _handle_test(arguments: dict[str, Any]) -> list[TextContent]:
     prompt: str | None = arguments.get("prompt")
     if not prompt:
         return [TextContent(type="text", text="Prompt is required.")]
+
+    try:
+        ctx = server.request_context
+        session = ctx.session
+    except LookupError:
+        session = None
+
+    if session:
+        try:
+            await session.send_log_message(level=cast(LoggingLevel, "debug"), data=f"glee_test: {prompt}", logger="glee")
+        except Exception:
+            pass
+
     return [TextContent(type="text", text=f"glee_test: {prompt}")]
 
 
