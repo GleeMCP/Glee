@@ -83,6 +83,20 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="glee_test",
+            description="Test MCP connectivity by echoing a prompt back.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "Any prompt to echo back.",
+                    },
+                },
+                "required": ["prompt"],
+            },
+        ),
+        Tool(
             name="glee_disconnect",
             description="Disconnect an agent from the current project.",
             inputSchema={
@@ -227,6 +241,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return await _handle_review(arguments)
     elif name == "glee_connect":
         return await _handle_connect(arguments)
+    elif name == "glee_test":
+        return await _handle_test(arguments)
     elif name == "glee_disconnect":
         return await _handle_disconnect(arguments)
     elif name == "glee_memory_add":
@@ -521,6 +537,14 @@ async def _handle_connect(arguments: dict[str, Any]) -> list[TextContent]:
         lines.append(f"Focus: {', '.join(focus_list)}")
 
     return [TextContent(type="text", text="\n".join(lines))]
+
+
+async def _handle_test(arguments: dict[str, Any]) -> list[TextContent]:
+    """Handle glee_test tool call."""
+    prompt: str | None = arguments.get("prompt")
+    if not prompt:
+        return [TextContent(type="text", text="Prompt is required.")]
+    return [TextContent(type="text", text=f"glee_test: {prompt}")]
 
 
 async def _handle_disconnect(arguments: dict[str, Any]) -> list[TextContent]:
