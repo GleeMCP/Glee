@@ -2,11 +2,12 @@
 
 import shutil
 import subprocess
+import sys
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from glee.logging import get_agent_logger
 
@@ -175,6 +176,141 @@ class BaseAgent(ABC):
                 exit_code=-1,
                 run_id=run_id,
             )
+        except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            agent_logger = get_agent_logger(self.project_path) if self.project_path else get_agent_logger()
+            if agent_logger:
+                run_id = agent_logger.log(
+                    agent=self.name,
+                    prompt=prompt,
+                    error=str(e),
+                    exit_code=-1,
+                    duration_ms=duration_ms,
+                )
+
+            return AgentResult(
+                output="",
+                error=str(e),
+                exit_code=-1,
+                run_id=run_id,
+            )
+
+    def _run_subprocess_streaming(
+        self,
+        args: list[str],
+        prompt: str = "",
+        timeout: int = 300,
+        cwd: str | None = None,
+        on_output: Callable[[str], None] | None = None,
+    ) -> AgentResult:
+        """Run a subprocess with real-time output streaming.
+
+        This method streams output to stderr (visible to user) while capturing
+        the full output for logging and MCP response.
+
+        Args:
+            args: Command arguments to run.
+            prompt: The prompt sent to the agent (for logging).
+            timeout: Timeout in seconds.
+            cwd: Working directory.
+            on_output: Optional callback for each line of output.
+
+        Returns:
+            AgentResult with output, error, and run_id for log lookup.
+        """
+        start_time = time.time()
+        run_id = None
+        output_lines: list[str] = []
+        error_lines: list[str] = []
+
+        # Default callback: stream to stderr so user sees reasoning in real-time
+        def default_output_callback(line: str) -> None:
+            sys.stderr.write(line)
+            sys.stderr.flush()
+
+        output_callback = on_output if on_output is not None else default_output_callback
+
+        try:
+            process = subprocess.Popen(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=cwd,
+                bufsize=1,  # Line buffered
+            )
+
+            import threading
+
+            # Track if timeout occurred
+            timed_out = False
+
+            def read_stream(stream: Any, lines: list[str], is_stderr: bool = False) -> None:
+                """Read from stream and collect lines."""
+                try:
+                    for line in iter(stream.readline, ""):
+                        if line:
+                            lines.append(line)
+                            # Stream stdout to user (reviewer reasoning)
+                            if not is_stderr:
+                                output_callback(line)
+                except Exception:
+                    pass
+                finally:
+                    stream.close()
+
+            # Start threads to read stdout and stderr
+            stdout_thread = threading.Thread(
+                target=read_stream,
+                args=(process.stdout, output_lines, False),
+            )
+            stderr_thread = threading.Thread(
+                target=read_stream,
+                args=(process.stderr, error_lines, True),
+            )
+            stdout_thread.start()
+            stderr_thread.start()
+
+            # Wait for process with timeout
+            try:
+                process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                process.kill()
+                process.wait()
+
+            # Wait for threads to finish reading
+            stdout_thread.join(timeout=5)
+            stderr_thread.join(timeout=5)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            output = "".join(output_lines)
+            error = "".join(error_lines)
+
+            if timed_out:
+                error = f"Command timed out after {timeout} seconds\n{error}"
+
+            # Log to SQLite
+            agent_logger = get_agent_logger(self.project_path) if self.project_path else get_agent_logger()
+            if agent_logger:
+                run_id = agent_logger.log(
+                    agent=self.name,
+                    prompt=prompt,
+                    output=output,
+                    raw=output,
+                    error=error if (process.returncode != 0 or timed_out) else None,
+                    exit_code=process.returncode if not timed_out else -1,
+                    duration_ms=duration_ms,
+                )
+
+            return AgentResult(
+                output=output,
+                error=error if (process.returncode != 0 or timed_out) else None,
+                exit_code=process.returncode if not timed_out else -1,
+                run_id=run_id,
+            )
+
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
 

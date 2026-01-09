@@ -370,7 +370,11 @@ def review(
     focus: str | None = typer.Option(None, "--focus", "-f", help="Focus areas (comma-separated: security, performance, etc.)"),
     reviewer: str | None = typer.Option(None, "--reviewer", "-r", help="Specific reviewer to use"),
 ) -> None:
-    """Trigger multi-reviewer workflow."""
+    """Trigger multi-reviewer workflow.
+
+    Runs reviews in parallel with real-time streaming output so you can see
+    the reviewer's reasoning process as it happens.
+    """
     import concurrent.futures
 
     from glee.agents import registry
@@ -407,12 +411,16 @@ def review(
     # Show review plan
     console.print("[bold]Review Plan[/bold]")
     console.print(f"  Target: {review_target}")
-    console.print(f"  Reviewers: {', '.join(r.get('name', 'unknown') for r in reviewers)}")
+    console.print(f"  Reviewers: {', '.join(r.get('name', 'unknown') for r in reviewers)} (parallel)")
     if focus_list:
         console.print(f"  Focus: {', '.join(focus_list)}")
     console.print()
 
-    # Run reviews
+    reviewer_names = [r.get('name', 'unknown') for r in reviewers]
+    logger.info(f"Starting review with reviewers: {', '.join(reviewer_names)}")
+    console.print("[green]Running reviews (streaming output)...[/green]\n")
+
+    # Run reviews in parallel
     results: dict[str, dict[str, Any]] = {}
 
     def run_single_review(
@@ -433,44 +441,40 @@ def review(
             review_focus = list(set(review_focus + config_focus))
 
         try:
+            # stream=True is the default for run_review, output streams to stderr
             result = agent.run_review(target=review_target, focus=review_focus if review_focus else None)
             return name, result, None
         except Exception as e:
             return name, None, str(e)
 
-    # Run reviews in parallel
-    reviewer_names = [r.get('name', 'unknown') for r in reviewers]
-    logger.info(f"Starting review with reviewers: {', '.join(reviewer_names)}")
-    console.print("[green]Running reviews...[/green]")
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(reviewers)) as executor:
         futures = {executor.submit(run_single_review, r): r for r in reviewers}
         for future in concurrent.futures.as_completed(futures):
             agent_name, result, error = future.result()
             results[agent_name] = {"result": result, "error": error}
 
-    # Display results
+    # Display summary
     console.print()
-    console.print("[bold]Review Results[/bold]")
+    console.print("[bold]Review Summary[/bold]")
     console.print("=" * 60)
 
     all_approved = True
     for agent_name, data in results.items():
-        console.print(f"\n[bold cyan]{agent_name.upper()}[/bold cyan]")
-        console.print("-" * 40)
-
         if data["error"]:
-            console.print(f"[red]Error: {data['error']}[/red]")
+            console.print(f"  {agent_name}: [red]Error[/red]")
             all_approved = False
         elif data["result"]:
             result = data["result"]
             if result.error:
-                console.print(f"[red]Error: {result.error}[/red]")
+                console.print(f"  {agent_name}: [red]Error[/red]")
                 all_approved = False
             else:
-                console.print(result.output)
                 # Check for approval
                 if "NEEDS_CHANGES" in result.output.upper():
+                    console.print(f"  {agent_name}: [yellow]Changes requested[/yellow]")
                     all_approved = False
+                else:
+                    console.print(f"  {agent_name}: [green]Approved[/green]")
 
     console.print()
     console.print("=" * 60)

@@ -18,6 +18,11 @@ class CodexAgent(BaseAgent):
         """Run Codex with a prompt.
 
         Uses: codex exec --json --full-auto "prompt"
+
+        Args:
+            prompt: The prompt to send to Codex.
+            timeout: Timeout in seconds (default 300).
+            stream: If True, stream output to stderr in real-time (default False).
         """
         args = [
             self.command,
@@ -27,7 +32,11 @@ class CodexAgent(BaseAgent):
             prompt,
         ]
 
-        result = self._run_subprocess(args, prompt=prompt, timeout=kwargs.get("timeout", 300))
+        timeout = kwargs.get("timeout", 300)
+        if kwargs.get("stream", False):
+            result = self._run_subprocess_streaming(args, prompt=prompt, timeout=timeout)
+        else:
+            result = self._run_subprocess(args, prompt=prompt, timeout=timeout)
 
         # Parse JSON output if available
         if result.success and result.output:
@@ -63,15 +72,18 @@ class CodexAgent(BaseAgent):
                     pass
         return results
 
-    def run_review(self, target: str = ".", focus: list[str] | None = None) -> AgentResult:
+    def run_review(
+        self, target: str = ".", focus: list[str] | None = None, stream: bool = True
+    ) -> AgentResult:
         """Run a code review with Codex.
 
         Args:
             target: What to review - file path, directory, 'git:changes', 'git:staged', or description
             focus: Optional focus areas (security, performance, etc.)
+            stream: If True, stream output to stderr in real-time (default True for reviews)
         """
         prompt = review_prompt(target, focus)
-        return self.run(prompt)
+        return self.run(prompt, stream=stream)
 
     def run_code(self, task: str, files: list[str] | None = None) -> AgentResult:
         """Run a coding task with Codex.

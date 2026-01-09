@@ -17,6 +17,13 @@ class GeminiAgent(BaseAgent):
         """Run Gemini with a prompt.
 
         Uses: gemini -p "prompt"
+
+        Args:
+            prompt: The prompt to send to Gemini.
+            sandbox: If True, run in sandbox mode.
+            yolo: If True, run in auto-approval mode.
+            timeout: Timeout in seconds (default 300).
+            stream: If True, stream output to stderr in real-time (default False).
         """
         args = [
             self.command,
@@ -31,17 +38,23 @@ class GeminiAgent(BaseAgent):
         if kwargs.get("yolo"):
             args.append("--yolo")
 
-        return self._run_subprocess(args, prompt=prompt, timeout=kwargs.get("timeout", 300))
+        timeout = kwargs.get("timeout", 300)
+        if kwargs.get("stream", False):
+            return self._run_subprocess_streaming(args, prompt=prompt, timeout=timeout)
+        return self._run_subprocess(args, prompt=prompt, timeout=timeout)
 
-    def run_review(self, target: str = ".", focus: list[str] | None = None) -> AgentResult:
+    def run_review(
+        self, target: str = ".", focus: list[str] | None = None, stream: bool = True
+    ) -> AgentResult:
         """Run a code review with Gemini.
 
         Args:
             target: What to review - file path, directory, 'git:changes', 'git:staged', or description
             focus: Optional focus areas (security, performance, etc.)
+            stream: If True, stream output to stderr in real-time (default True for reviews)
         """
         prompt = review_prompt(target, focus)
-        return self.run(prompt, sandbox=True)
+        return self.run(prompt, sandbox=True, stream=stream)
 
     def run_code(self, task: str, files: list[str] | None = None) -> AgentResult:
         """Run a coding task with Gemini.

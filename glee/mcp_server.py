@@ -288,8 +288,13 @@ async def _handle_status() -> list[TextContent]:
 
 
 async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
-    """Handle glee_review tool call."""
+    """Handle glee_review tool call.
+
+    Runs reviews in parallel with real-time streaming output to stderr so the user
+    can see the reviewer's reasoning process as it happens.
+    """
     import concurrent.futures
+    import sys
     from pathlib import Path
 
     from glee.agents import registry
@@ -328,9 +333,15 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
     focus_str: str = arguments.get("focus", "")
     focus_list: list[str] | None = [f.strip() for f in focus_str.split(",")] if focus_str else None
 
-    lines: list[str] = [f"Reviewing with {len(reviewers)} reviewer(s)...", f"Target: {target}", ""]
+    # Print header to stderr so user sees what's happening
+    sys.stderr.write(f"\n{'='*60}\n")
+    sys.stderr.write(f"GLEE REVIEW: {target}\n")
+    sys.stderr.write(f"Reviewers: {', '.join(r.get('name', 'unknown') for r in reviewers)} (parallel)\n")
+    sys.stderr.write(f"{'='*60}\n\n")
+    sys.stderr.flush()
 
-    # Run reviews
+    lines: list[str] = [f"Reviewed with {len(reviewers)} reviewer(s)", f"Target: {target}", ""]
+
     def run_single_review(reviewer_config: dict[str, Any]) -> tuple[str, str | None, str | None]:
         name = reviewer_config.get("name", "unknown")
         command = reviewer_config.get("command")
@@ -349,8 +360,8 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
             review_focus = list(set(review_focus + config_focus))
 
         try:
+            # stream=True is the default for run_review, output streams to stderr
             result = agent.run_review(target=target, focus=review_focus if review_focus else None)
-            # Include both output and error in response for visibility
             if result.error:
                 return name, result.output, f"{result.error} (exit_code={result.exit_code})"
             return name, result.output, None
@@ -358,18 +369,30 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
             import traceback
             return name, None, f"{str(e)}\n{traceback.format_exc()}"
 
+    # Run reviews in parallel for speed - streaming output may interleave
+    results: dict[str, tuple[str | None, str | None]] = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(reviewers)) as executor:
         futures = {executor.submit(run_single_review, r): r for r in reviewers}
         for future in concurrent.futures.as_completed(futures):
             agent_name, output, error = future.result()
-            lines.append(f"=== {agent_name.upper()} ===")
-            if error:
-                lines.append(f"Error: {error}")
-            if output:
-                lines.append(output)
-            if not error and not output:
-                lines.append("(no output)")
-            lines.append("")
+            results[agent_name] = (output, error)
+
+    # Print completion footer to stderr
+    sys.stderr.write(f"\n{'='*60}\n")
+    sys.stderr.write("REVIEW COMPLETE\n")
+    sys.stderr.write(f"{'='*60}\n\n")
+    sys.stderr.flush()
+
+    # Build MCP response with full output
+    for agent_name, (output, error) in results.items():
+        lines.append(f"=== {agent_name.upper()} ===")
+        if error:
+            lines.append(f"Error: {error}")
+        if output:
+            lines.append(output)
+        if not error and not output:
+            lines.append("(no output)")
+        lines.append("")
 
     return [TextContent(type="text", text="\n".join(lines))]
 
