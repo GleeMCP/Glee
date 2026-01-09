@@ -1,12 +1,24 @@
 """Glee MCP Server - Exposes Glee tools to Claude Code."""
 
-from typing import Any
+from typing import Any, cast
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import Tool, TextContent, LoggingLevel
 
 server = Server("glee")
+
+# Log level ordering for filtering notifications
+_LOG_LEVEL_ORDER = {
+    "debug": 10,
+    "info": 20,
+    "notice": 25,
+    "warning": 30,
+    "error": 40,
+    "critical": 50,
+    "alert": 60,
+    "emergency": 70,
+}
 
 
 @server.list_tools()
@@ -35,6 +47,10 @@ async def list_tools() -> list[Tool]:
                     "focus": {
                         "type": "string",
                         "description": "Comma-separated focus areas (e.g., 'security,performance').",
+                    },
+                    "log_level": {
+                        "type": "string",
+                        "description": "Minimum log level for notifications: debug, info, notice, warning, error, critical. Defaults to 'debug' for full observability.",
                     },
                 },
                 "required": [],
@@ -309,11 +325,18 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
     except LookupError:
         session = None
 
-    async def send_log(message: str) -> None:
+    # Get log level threshold from arguments (default: debug for full observability)
+    log_level_threshold = arguments.get("log_level", "debug")
+
+    def should_log(level: str) -> bool:
+        """Check if message level meets the threshold."""
+        return _LOG_LEVEL_ORDER.get(level, 0) >= _LOG_LEVEL_ORDER.get(log_level_threshold, 0)
+
+    async def send_log(message: str, level: str = "info") -> None:
         """Send a log message to Claude Code via MCP notification."""
-        if session:
+        if session and should_log(level):
             try:
-                await session.send_log_message(level="info", data=message, logger="glee")
+                await session.send_log_message(level=cast(LoggingLevel, level), data=message, logger="glee")
             except Exception:
                 pass
 
@@ -371,10 +394,10 @@ async def _handle_review(arguments: dict[str, Any]) -> list[TextContent]:
     # Get event loop for thread-safe async calls
     loop = asyncio.get_event_loop()
 
-    def send_log_sync(message: str) -> None:
+    def send_log_sync(message: str, level: str = "info") -> None:
         """Send log message from sync context (thread)."""
         if session and loop.is_running():
-            asyncio.run_coroutine_threadsafe(send_log(message), loop)
+            asyncio.run_coroutine_threadsafe(send_log(message, level=level), loop)
 
     def run_single_review(reviewer_config: dict[str, Any]) -> tuple[str, str | None, str | None]:
         name = reviewer_config.get("name", "unknown")

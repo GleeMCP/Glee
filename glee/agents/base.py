@@ -65,13 +65,21 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    def run_review(self, target: str = ".", focus: list[str] | None = None) -> AgentResult:
+    def run_review(
+        self,
+        target: str = ".",
+        focus: list[str] | None = None,
+        stream: bool = True,
+        on_output: Callable[[str], None] | None = None,
+    ) -> AgentResult:
         """Run a code review.
 
         Args:
             target: What to review. Can be a file path, directory, 'git:changes',
                     'git:staged', or a natural description.
             focus: Optional focus areas (security, performance, etc.)
+            stream: If True, stream output in real-time.
+            on_output: Optional callback for each line of output.
         """
         pass
 
