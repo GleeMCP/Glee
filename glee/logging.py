@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
-
+from glee.db.sqlite import close_thread_connections
 from loguru import logger
 
 from glee.db.sqlite import get_sqlite_connection, init_sqlite
@@ -66,8 +66,8 @@ def _get_log_settings(project_path: Path) -> dict[str, Any]:
         import yaml
 
         with open(config_path) as f:
-            config = yaml.safe_load(f) or {}
-            log_config = config.get("logging", {})
+            config: dict[str, Any] = yaml.safe_load(f) or {}
+            log_config: dict[str, Any] = config.get("logging", {})
             settings.update(log_config)
 
     return settings
@@ -103,16 +103,14 @@ class AgentRunLogger:
 
     def __init__(self, project_path: Path):
         self.project_path = project_path
-        self._conn: sqlite3.Connection | None = None
         self._settings = _get_log_settings(project_path)
         self._init_db()
 
     @property
     def conn(self) -> sqlite3.Connection:
-        """Get SQLite connection."""
-        if self._conn is None:
-            self._conn = get_sqlite_connection(self.project_path)
-        return self._conn
+        """Get thread-local SQLite connection."""
+        # Always get thread-local connection to avoid cross-thread issues
+        return get_sqlite_connection(self.project_path)
 
     @property
     def enabled(self) -> bool:
@@ -214,10 +212,8 @@ class AgentRunLogger:
         return log_id
 
     def close(self) -> None:
-        """Close the database connection."""
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        """Close thread-local database connections."""
+        close_thread_connections()
 
 
 _agent_logger: AgentRunLogger | None = None
@@ -321,17 +317,15 @@ class SQLiteLogHandler:
 
     def __init__(self, project_path: Path):
         self.project_path = project_path
-        self._conn: sqlite3.Connection | None = None
         self._settings = _get_log_settings(project_path)
         self._write_count = 0  # Track writes to avoid checking rotation on every write
         self._init_db()
 
     @property
     def conn(self) -> sqlite3.Connection:
-        """Get SQLite connection."""
-        if self._conn is None:
-            self._conn = get_sqlite_connection(self.project_path)
-        return self._conn
+        """Get thread-local SQLite connection."""
+        # Always get thread-local connection to avoid cross-thread issues
+        return get_sqlite_connection(self.project_path)
 
     def _init_db(self) -> None:
         """Initialize the logs table using centralized schema."""
@@ -385,10 +379,9 @@ class SQLiteLogHandler:
             self._write_count = 0
 
     def close(self) -> None:
-        """Close the database connection."""
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        """Close thread-local database connections."""
+        from glee.db.sqlite import close_thread_connections
+        close_thread_connections()
 
 
 _log_handler: SQLiteLogHandler | None = None
