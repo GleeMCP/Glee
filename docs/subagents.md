@@ -304,9 +304,9 @@ CLI agents (codex, claude, gemini) are stateless - each subprocess is fresh. Gle
 
 ```json
 {
-    "session_id": "task-a1b2c3d4",
-    "agent_name": "security-scanner",
-    "agent_cli": "codex",
+  "session_id": "task-a1b2c3d4",
+  "agent_name": "security-scanner",
+  "agent_cli": "codex",
   "created_at": "2025-01-09T15:00:00",
   "updated_at": "2025-01-09T15:05:00",
   "status": "completed",
