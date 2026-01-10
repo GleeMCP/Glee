@@ -505,10 +505,10 @@ MCP can't stream stdout/stderr to clients. Same solution as reviewers:
 
 ### Phase 1: glee_task (v0.3)
 - [x] Design docs (subagents.md, workflows.md, tools.md)
-- [ ] `glee_task` MCP tool - spawn CLI agents (codex, claude, gemini)
-- [ ] Session management (generate ID, store context)
-- [ ] Context injection (AGENTS.md + memories)
-- [ ] Basic logging to `.glee/stream_logs/`
+- [x] `glee_task` MCP tool - spawn CLI agents (codex, claude, gemini)
+- [x] Session management (generate ID, store context)
+- [x] Context injection (AGENTS.md + memories)
+- [x] Basic logging to `.glee/stream_logs/`
 
 ### Phase 2: Tools (v0.4)
 - [ ] `.glee/tools/*.yml` format

@@ -903,7 +903,6 @@ async def _handle_task(arguments: dict[str, Any]) -> list[TextContent]:
     import glee.session as session_mod
     from glee.agents import registry
     from glee.config import get_project_config
-    from glee.logging import get_agent_logger
 
     config = get_project_config()
     if not config:
@@ -919,9 +918,6 @@ async def _handle_task(arguments: dict[str, Any]) -> list[TextContent]:
 
     if not description or not prompt:
         return [TextContent(type="text", text="Both 'description' and 'prompt' are required.")]
-
-    # Initialize logger
-    get_agent_logger(project_path)
 
     # Load or create session
     session: session_mod.Session | None = None
