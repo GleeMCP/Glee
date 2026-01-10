@@ -225,7 +225,12 @@ async def list_tools() -> list[Tool]:
                     },
                     "agent_name": {
                         "type": "string",
-                        "description": "Subagent from .glee/agents/*.yml OR CLI name (codex/claude/gemini). Auto-selects if omitted.",
+                        "description": "Subagent from .glee/agents/*.yml. If provided, uses that subagent definition.",
+                    },
+                    "agent_cli": {
+                        "type": "string",
+                        "description": "Run a CLI directly (codex, claude, gemini). Ignored when agent_name is set.",
+                        "enum": ["codex", "claude", "gemini"],
                     },
                     "background": {
                         "type": "boolean",
@@ -913,6 +918,7 @@ async def _handle_task(arguments: dict[str, Any]) -> list[TextContent]:
     description: str = arguments.get("description", "")
     prompt: str = arguments.get("prompt", "")
     agent_name_arg: str | None = arguments.get("agent_name")
+    agent_cli_arg: str | None = arguments.get("agent_cli")
     background: bool = arguments.get("background", False)
     session_id_arg: str | None = arguments.get("session_id")
 
@@ -928,16 +934,29 @@ async def _handle_task(arguments: dict[str, Any]) -> list[TextContent]:
         # Add new prompt to session
         session_mod.add_message(project_path, session_id_arg, "user", prompt)
 
-    # Select agent: use provided agent_name or auto-select
-    # TODO (Phase 3): Load subagent from .glee/agents/{agent_name}.yml if exists
-    # For now, treat agent_name as CLI name directly
+    # Agent selection - resolution order:
+    # 1. agent_name provided → use subagent definition from .glee/agents/
+    # 2. agent_cli provided → run CLI directly
+    # 3. Neither provided → auto-select based on heuristics
+    agent_cli: str  # CLI to use
+
     if agent_name_arg:
-        agent_cli = agent_name_arg
+        # TODO (Phase 3): Load subagent from .glee/agents/{agent_name}.yml
+        agent_path = project_path / ".glee" / "agents" / f"{agent_name_arg}.yml"
+        if agent_path.exists():
+            # Phase 3: Would load and use subagent definition here
+            # For now, return not implemented
+            return [TextContent(type="text", text=f"Subagent loading not yet implemented (Phase 3). Use agent_cli='codex'|'claude'|'gemini' instead.")]
+        else:
+            return [TextContent(type="text", text=f"Subagent not found: {agent_name_arg}. Create .glee/agents/{agent_name_arg}.yml or use agent_cli instead.")]
+    elif agent_cli_arg:
+        # Use specified CLI directly
+        agent_cli = agent_cli_arg
         agent = registry.get(agent_cli)
         if not agent:
-            return [TextContent(type="text", text=f"Unknown agent: {agent_name_arg}. Available: codex, claude, gemini")]
+            return [TextContent(type="text", text=f"Unknown agent CLI: {agent_cli_arg}. Available: codex, claude, gemini")]
         if not agent.is_available():
-            return [TextContent(type="text", text=f"Agent '{agent_name_arg}' is not installed.")]
+            return [TextContent(type="text", text=f"Agent CLI '{agent_cli_arg}' is not installed.")]
     else:
         # Auto-select using heuristics
         agent_cli = _select_agent(prompt)

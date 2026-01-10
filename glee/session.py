@@ -9,7 +9,7 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 
 class Message(TypedDict):
@@ -23,7 +23,8 @@ class Session(TypedDict):
     """A session with an agent."""
 
     session_id: str
-    agent: str
+    agent_name: NotRequired[str | None]  # Subagent name from .glee/agents/ (None if using CLI directly)
+    agent_cli: str  # CLI used: codex, claude, gemini
     description: str
     created_at: str
     updated_at: str
@@ -47,16 +48,26 @@ def generate_session_id() -> str:
 def create_session(
     project_path: str | Path,
     description: str,
-    agent: str,
+    agent_cli: str,
     initial_prompt: str,
+    agent_name: str | None = None,
 ) -> Session:
-    """Create a new session."""
+    """Create a new session.
+
+    Args:
+        project_path: Path to the project root
+        description: Short task description
+        agent_cli: CLI to use (codex, claude, gemini)
+        initial_prompt: The initial user prompt
+        agent_name: Optional subagent name from .glee/agents/
+    """
     session_id = generate_session_id()
     now = datetime.now().isoformat()
 
     session: Session = {
         "session_id": session_id,
-        "agent": agent,
+        "agent_name": agent_name,
+        "agent_cli": agent_cli,
         "description": description,
         "created_at": now,
         "updated_at": now,
