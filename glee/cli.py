@@ -409,13 +409,36 @@ def config_get(
 
     if key is None:
         # Show all config
-        console.print("[bold]Configuration:[/bold]")
-        console.print(f"  reviewer.primary = {reviewers.get('primary', 'codex')}")
+        from glee.config import get_autonomy_config
+
+        config_tree = Tree(f"[{Theme.HEADER}]⚙️  Configuration[/{Theme.HEADER}]")
+
+        # Autonomy (first)
+        try:
+            autonomy = get_autonomy_config()
+            autonomy_branch = config_tree.add(f"[{Theme.INFO}]🤖 Autonomy[/{Theme.INFO}]")
+            autonomy_branch.add(f"[{Theme.MUTED}]level:[/{Theme.MUTED}] [{Theme.PRIMARY}]{autonomy.level}[/{Theme.PRIMARY}]")
+
+            if autonomy.checkpoint_policy:
+                policy_branch = autonomy_branch.add(f"[{Theme.MUTED}]checkpoint_policy:[/{Theme.MUTED}]")
+                for severity, action in autonomy.checkpoint_policy.items():
+                    policy_branch.add(f"[{Theme.MUTED}]{severity}:[/{Theme.MUTED}] [{Theme.ACCENT}]{action}[/{Theme.ACCENT}]")
+
+            if autonomy.require_approval_for:
+                autonomy_branch.add(f"[{Theme.MUTED}]require_approval_for:[/{Theme.MUTED}] [{Theme.ACCENT}]{', '.join(autonomy.require_approval_for)}[/{Theme.ACCENT}]")
+        except Exception:
+            pass  # No autonomy config set
+
+        # Reviewers
+        reviewer_branch = config_tree.add(f"[{Theme.INFO}]👥 Reviewers[/{Theme.INFO}]")
+        reviewer_branch.add(f"[{Theme.MUTED}]primary:[/{Theme.MUTED}] [{Theme.PRIMARY}]{reviewers.get('primary', 'codex')}[/{Theme.PRIMARY}]")
         secondary = reviewers.get("secondary")
         if secondary:
-            console.print(f"  reviewer.secondary = {secondary}")
+            reviewer_branch.add(f"[{Theme.MUTED}]secondary:[/{Theme.MUTED}] [{Theme.ACCENT}]{secondary}[/{Theme.ACCENT}]")
         else:
-            console.print("  reviewer.secondary = [dim](not set)[/dim]")
+            reviewer_branch.add(f"[{Theme.MUTED}]secondary:[/{Theme.MUTED}] [{Theme.MUTED}]not set[/{Theme.MUTED}]")
+
+        console.print(padded(config_tree))
         return
 
     if key == "reviewer.primary":
@@ -429,6 +452,15 @@ def config_get(
     else:
         console.print(f"[red]Unknown config key: {key}[/red]")
         raise typer.Exit(1)
+
+
+@config_app.command("list")
+def config_list():
+    """List all configuration values.
+
+    Alias for 'glee config get' without arguments.
+    """
+    config_get(key=None)
 
 
 @app.command()
