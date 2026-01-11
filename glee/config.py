@@ -136,8 +136,8 @@ def register_session_hook(project_path: str) -> bool:
     """Register Glee hooks in Claude Code settings. Idempotent.
 
     Registers:
-    - UserPromptSubmit: Inject warmup context at session start
-    - Stop: Capture session summary at session end
+    - SessionStart: Inject warmup context at session start
+    - SessionEnd: Capture session summary at session end
     """
     import json
 
@@ -173,31 +173,14 @@ def register_session_hook(project_path: str) -> bool:
                     return True
         return False
 
-    # Helper to migrate old hook command
-    def migrate_hook_command(hook_name: str, old_cmd: str, new_cmd: str) -> bool:
-        hooks_list = hooks_dict.get(hook_name, [])
-        migrated = False
-        for hook_config in hooks_list:
-            inner_hooks = cast(list[dict[str, Any]], hook_config.get("hooks", []))
-            for h in inner_hooks:
-                cmd = str(h.get("command", ""))
-                if old_cmd in cmd:
-                    h["command"] = cmd.replace(old_cmd, new_cmd)
-                    migrated = True
-        return migrated
-
-    # Migrate old "glee memory overview" to "glee warmup"
-    if migrate_hook_command("SessionStart", "glee memory overview", "glee warmup"):
-        updated = True
-
     # Register warmup hook (SessionStart)
-    if not has_hook_command("SessionStart", "glee warmup"):
+    if not has_hook_command("SessionStart", "glee warmup-session"):
         warmup_hook: dict[str, Any] = {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": "glee warmup 2>/dev/null || true",
+                    "command": "glee warmup-session 2>/dev/null || true",
                 }
             ],
         }
@@ -206,20 +189,20 @@ def register_session_hook(project_path: str) -> bool:
         hooks_dict["SessionStart"].append(warmup_hook)
         updated = True
 
-    # Register session summary hook (Stop)
-    if not has_hook_command("Stop", "glee summarize-session"):
-        stop_hook: dict[str, Any] = {
+    # Register session summary hook (SessionEnd)
+    if not has_hook_command("SessionEnd", "glee summarize-session"):
+        session_end_hook: dict[str, Any] = {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": "glee summarize-session 2>/dev/null || true",
+                    "command": "glee summarize-session --from=claude 2>/dev/null || true",
                 }
             ],
         }
-        if "Stop" not in hooks_dict:
-            hooks_dict["Stop"] = []
-        hooks_dict["Stop"].append(stop_hook)
+        if "SessionEnd" not in hooks_dict:
+            hooks_dict["SessionEnd"] = []
+        hooks_dict["SessionEnd"].append(session_end_hook)
         updated = True
 
     if updated:

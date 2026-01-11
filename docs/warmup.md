@@ -15,12 +15,12 @@ Vibe coding breaks flow when a new session starts. Users re-explain context, re-
 │                                                                  │
 │  Session Start                          Session End              │
 │  ─────────────                          ───────────              │
-│  SessionStart hook                      Stop hook                │
+│  SessionStart hook                      SessionEnd hook          │
 │         │                                    │                   │
 │         ▼                                    ▼                   │
 │  ┌──────────────┐                    ┌───────────────┐          │
-│  │ glee warmup  │                    │ glee          │          │
-│  │              │                    │ summarize-    │          │
+│  │ glee warmup- │                    │ glee          │          │
+│  │ session      │                    │ summarize-    │          │
 │  │ Reads:       │                    │ session       │          │
 │  │ - goal       │                    │               │          │
 │  │ - constraints│                    │ Writes:       │          │
@@ -75,31 +75,29 @@ This means warmup shows *actual* code changes since the last session, not just u
 
 ## Data Flow
 
-### Capture (`capture_memory`)
+### Session Summarization (LLM-based)
 
-Called by:
-- `glee_memory_capture` MCP tool (explicit)
-- `glee_task` after agent completes (automatic, from `<glee_memory_capture>` block)
-- `glee summarize-session` CLI command
+When a session ends, `glee summarize-session --from=claude` is called by the SessionEnd hook. It:
 
-```python
-capture_memory(project_path, {
-    "goal": "Implement session continuity",
-    "constraints": ["No cloud dependencies", "Must be fast"],
-    "decisions": ["Use LanceDB for vectors"],
-    "open_loops": ["Hook registration not implemented"],
-    "recent_changes": ["M glee/warmup.py", "A glee/helpers.py"],
-    "summary": "Added warmup and capture modules",
-    "git_base": "abc123..."  # Current HEAD
-})
-```
+1. Reads the Claude Code session transcript
+2. Calls the specified agent (Claude) to generate structured output:
+   ```json
+   {
+     "goal": "The main task or objective",
+     "decisions": ["Decision 1", "Decision 2"],
+     "open_loops": ["Unfinished task 1"],
+     "summary": "2-3 sentence summary"
+   }
+   ```
+3. Saves the structured data to memory via `capture_memory()`
+
+All activity is logged to `.glee/stream_logs/summarize-session-YYYYMMDD.log` for debugging.
 
 ### Warmup (`build_warmup_text`)
 
 Called by:
-- `glee warmup` CLI command
-- `glee_warmup` MCP tool
-- `UserPromptSubmit` hook (planned)
+- `glee warmup-session` CLI command
+- `SessionStart` hook (auto-injected)
 
 Output format:
 
@@ -140,17 +138,19 @@ Implement session continuity for vibe coding
 
 ### Claude Code
 
+When you run `glee init claude`, Glee registers hooks in `.claude/settings.local.json`:
+
 ```json
-// .claude/settings.json
+// .claude/settings.local.json
 {
   "hooks": {
     "SessionStart": [{
       "matcher": "",
-      "hooks": [{ "type": "command", "command": "glee warmup" }]
+      "hooks": [{ "type": "command", "command": "glee warmup-session 2>/dev/null || true" }]
     }],
-    "Stop": [{
+    "SessionEnd": [{
       "matcher": "",
-      "hooks": [{ "type": "command", "command": "glee summarize-session" }]
+      "hooks": [{ "type": "command", "command": "glee summarize-session --from=claude 2>/dev/null || true" }]
     }]
   }
 }
@@ -164,26 +164,28 @@ See [coding-agent-hooks.md](./coding-agent-hooks.md) for hook configuration for 
 
 | Tool | Purpose |
 |------|---------|
-| `glee_warmup` | Return warmup context (injected at session start) |
-| `glee_summarize_session` | Capture session summary (called at session end) |
-| `glee_memory_capture` | Explicitly capture structured memory |
 | `glee_memory_add` | Add a memory entry to a category |
 | `glee_memory_list` | List memories, optionally filtered by category |
 | `glee_memory_delete` | Delete memory by ID or category |
+
+Note: Warmup and session summarization are handled automatically by hooks (`SessionStart` and `SessionEnd`), not via MCP tools.
 
 ## CLI Commands
 
 ```bash
 # Output warmup context to stdout
-glee warmup
+glee warmup-session
 
-# Capture session summary
-glee summarize-session
-glee summarize-session --summary "Finished auth module"
+# Summarize session (automatically called by SessionEnd hook)
+# Hook mode: reads session data from stdin, saves to DB
+glee summarize-session --from=claude
 
-# Capture structured memory from JSON
-glee memory capture --json '{"goal": "Build auth", "constraints": ["Use JWT"]}'
-glee memory capture --file context.json
+# Manual mode: prints structured summary, no save
+glee summarize-session --from=claude --session-id=abc123
+
+# Add memory manually
+glee memory add --category goal --content "Build auth"
+glee memory add --category constraint --content "Use JWT"
 ```
 
 ## Success Metrics

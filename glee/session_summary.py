@@ -19,8 +19,15 @@ from glee.session import get_latest_session
 def summarize_session(
     project_path: str | Path,
     summary: str | None = None,
+    claude_session_id: str | None = None,
 ) -> dict[str, dict[str, int]]:
-    """Capture a lightweight session summary into memory."""
+    """Capture a lightweight session summary into memory.
+
+    Args:
+        project_path: Path to the project root
+        summary: Optional summary text
+        claude_session_id: Optional Claude Code session ID for linking to conversation
+    """
     project_path = Path(project_path)
     if not (project_path / ".glee").exists():
         return {"added": {}, "cleared": {}}
@@ -34,7 +41,14 @@ def summarize_session(
         if desc:
             auto_summary = f"{desc} ({status})"
 
-    summary_text = summary.strip() if summary else auto_summary or "Session ended."
+    # Use provided summary, or auto-generated from session
+    # If neither exists, skip creating a useless entry
+    summary_text = (summary.strip() if summary else auto_summary) or ""
+    if not summary_text:
+        return {"added": {}, "cleared": {}}
+
+    # Use Claude session ID if provided, otherwise use Glee session ID
+    effective_session_id = claude_session_id or session_id
 
     memory = Memory(str(project_path))
     session_summaries = memory.get_by_category("session_summary")
@@ -66,5 +80,5 @@ def summarize_session(
         str(project_path),
         payload,
         source="summarize_session",
-        session_id=session_id,
+        session_id=effective_session_id,
     )

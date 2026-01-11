@@ -36,29 +36,30 @@ Memories are organized by category. Standard categories:
 
 ```bash
 # Add a memory
-glee memory ops --action add --category architecture --content "API uses REST with versioned endpoints /v1/*"
-glee memory ops --action add --category convention --content "Use snake_case for Python, camelCase for TypeScript"
-glee memory ops --action add --category my-custom-category --content "Custom category content"
-glee memory ops --action add --category decision --content "Use FastAPI" --metadata '{"source":"adr-001","owner":"api"}'
+glee memory add --category architecture --content "API uses REST with versioned endpoints /v1/*"
+glee memory add --category convention --content "Use snake_case for Python, camelCase for TypeScript"
+glee memory add --category my-custom-category --content "Custom category content"
+glee memory add --category decision --content "Use FastAPI" --metadata '{"source":"adr-001","owner":"api"}'
 
 # List memories
-glee memory ops --action list                    # All memories
-glee memory ops --action list --category architecture  # Filter by category
+glee memory list                    # All memories
+glee memory list --category architecture  # Filter by category
 
 # Search (semantic similarity)
 glee memory search "how do we handle authentication"
 glee memory search "error handling" --category convention
 
 # Get formatted overview (for context injection)
-glee warmup          # Session warmup (goal, constraints, decisions, open loops, changes, memory)
+glee warmup-session          # Session warmup (goal, constraints, decisions, open loops, changes, memory)
 glee memory overview # Memory-only overview
 
 # Structured capture
-glee memory capture --json '{"goal":"Ship v1","constraints":["No new deps"],"decisions":["Use FastAPI"],"open_loops":["Add auth"],"recent_changes":["M api.py"],"summary":"Finish auth and tests"}'
+glee memory add --category goal --content "Ship v1"
+glee memory add --category decision --content "Use FastAPI"
 
 # Delete
-glee memory ops --action delete --by id --value abc123              # Delete by ID
-glee memory ops --action delete --by category --value review --confirm # Delete all in category
+glee memory delete --by id --value abc123              # Delete by ID
+glee memory delete --by category --value review --confirm # Delete all in category
 
 # Statistics
 glee memory stats
@@ -66,7 +67,7 @@ glee memory stats
 
 Top-level shortcut:
 ```bash
-glee warmup  # Session warmup context (goal, constraints, decisions, open loops, changes, memory)
+glee warmup-session  # Session warmup context (goal, constraints, decisions, open loops, changes, memory)
 ```
 
 ## MCP Tools
@@ -78,13 +79,12 @@ When Claude Code runs in a Glee project, these tools are available:
 | `glee_memory_add` | Add a memory entry to a category |
 | `glee_memory_list` | List memories, optionally filtered by category |
 | `glee_memory_delete` | Delete memory by ID or category |
-| `glee_memory_capture` | Capture structured memory (goal, constraints, decisions, open loops, changes) |
 | `glee_memory_search` | Semantic search across memories |
 | `glee_memory_overview` | Get formatted overview for context |
 | `glee_memory_stats` | Get memory statistics |
 | `glee_memory_bootstrap` | Bootstrap memory from docs + structure |
-| `glee_warmup` | Return session warmup context |
-| `glee_summarize_session` | Store a session summary and recent changes |
+
+Note: Warmup and session summarization are handled automatically by hooks. Structured session capture (goal, decisions, open_loops, summary) is handled automatically by the `SessionEnd` hook via `glee summarize-session --from=claude`.
 
 Example MCP calls:
 ```text
@@ -106,18 +106,29 @@ Then returns this context with instructions. Claude Code (already an LLM) analyz
 
 ## Auto-Injection
 
-When you run `glee init --agent claude`, Glee registers a SessionStart hook in `.claude/settings.local.json`:
+When you run `glee init claude`, Glee registers hooks in `.claude/settings.local.json`:
 
 ```json
 {
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|compact",
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "glee warmup 2>/dev/null || true"
+            "command": "glee warmup-session 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "glee summarize-session --from=claude 2>/dev/null || true"
           }
         ]
       }
@@ -126,10 +137,9 @@ When you run `glee init --agent claude`, Glee registers a SessionStart hook in `
 }
 ```
 
-This injects the warmup context (goal, constraints, decisions, open loops, changes, memory) when Claude Code:
-- **Starts** a new session
-- **Resumes** an existing session
-- **Compacts** context (summarization)
+This:
+- **SessionStart**: Injects warmup context (goal, constraints, decisions, open loops, changes, memory)
+- **SessionEnd**: Uses the agent (Claude) to generate a structured summary (goal, decisions, open_loops, summary) and stores it in memory. Logs to `.glee/stream_logs/` for debugging.
 
 ## Usage Patterns
 
@@ -139,13 +149,13 @@ As you work, add important context:
 
 ```bash
 # After making architectural decisions
-glee memory ops --action add --category decision --content "Chose PostgreSQL over MongoDB for ACID compliance"
+glee memory add --category decision --content "Chose PostgreSQL over MongoDB for ACID compliance"
 
 # When establishing patterns
-glee memory ops --action add --category convention --content "All API errors return {error: string, code: number}"
+glee memory add --category convention --content "All API errors return {error: string, code: number}"
 
 # After reviews reveal patterns
-glee memory ops --action add --category review --content "Always check null before accessing nested properties"
+glee memory add --category review --content "Always check null before accessing nested properties"
 ```
 
 ### Semantic Search
@@ -164,8 +174,8 @@ glee memory search "what to do when API fails"
 
 If old information conflicts with new:
 
-1. Delete the outdated memory: `glee memory ops --action delete --by id --value <id>`
-2. Add the updated information: `glee memory ops --action add --category <category> --content "<new content>"`
+1. Delete the outdated memory: `glee memory delete --by id --value <id>`
+2. Add the updated information: `glee memory add --category <category> --content "<new content>"`
 
 There's no `update` command - vectors must be regenerated when content changes, so delete + add is the correct workflow.
 

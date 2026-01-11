@@ -12,7 +12,7 @@ uv tool install glee --python 3.13
 # or: pipx install glee
 
 # Initialize project (registers MCP server for Claude Code)
-glee init
+glee init claude                  # Use 'claude', 'codex', 'gemini', 'cursor', etc.
 
 # Configure reviewers
 glee config set reviewer.primary codex
@@ -40,19 +40,20 @@ glee review git:staged           # Review staged changes
 After running `glee init`, restart Claude Code. You'll have these MCP tools:
 
 - `glee_status` - Show project status and reviewer config
-- `glee_warmup` - Show session warmup context (goal, constraints, decisions, changes, open loops)
-- `glee_summarize_session` - Store a session summary and recent changes in memory
 - `glee_review` - Run code review with primary reviewer
 - `glee_config_set` - Set config value (e.g., reviewer.primary)
 - `glee_config_unset` - Unset config value (e.g., reviewer.secondary)
 - `glee_memory_add` - Add a memory entry to a category
 - `glee_memory_list` - List memories, optionally filtered by category
 - `glee_memory_delete` - Delete memory by ID or category
-- `glee_memory_capture` - Capture structured session memory (goal, constraints, decisions, open loops, changes)
 - `glee_memory_search` - Semantic search across memories
 - `glee_memory_overview` - Memory overview for context
 - `glee_memory_stats` - Memory statistics
 - `glee_memory_bootstrap` - Bootstrap memory from docs + structure
+
+**Session Hooks** (automatic):
+- `SessionStart` → injects warmup context
+- `SessionEnd` → uses LLM to generate structured summary (goal, decisions, open_loops) and saves to memory
 
 ```
 # In Claude Code, you can now say:
@@ -63,7 +64,7 @@ After running `glee init`, restart Claude Code. You'll have these MCP tools:
 ## CLI Commands
 
 ```bash
-glee init                         # Initialize project + register MCP server
+glee init <agent>                 # Initialize project + register MCP server
 glee status                       # Show project status
 
 # Configuration

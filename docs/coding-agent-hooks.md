@@ -6,7 +6,7 @@ A comprehensive comparison of hook systems across AI coding agents. This informs
 
 | Agent | Hook System | Config Location | Hook Events | Session End Hook |
 |-------|-------------|-----------------|-------------|------------------|
-| **Claude Code** | Native | `~/.claude/settings.json`, `.claude/settings.json` | 6 events | `Stop` |
+| **Claude Code** | Native | `~/.claude/settings.json`, `.claude/settings.local.json` | 7 events | `SessionEnd` |
 | **Cursor** | Native | `~/.cursor/hooks.json`, `.cursor/hooks.json` | 10+ events | `stop` |
 | **Gemini CLI** | Native | `~/.gemini/settings.json`, `.gemini/settings.json` | 11 events | `SessionEnd` |
 | **OpenCode** | Plugin-based | `.opencode/plugin/`, `opencode.json` | Event streaming | `session.idle` |
@@ -24,37 +24,38 @@ A comprehensive comparison of hook systems across AI coding agents. This informs
 | Event | When | Can Block | Use Case |
 |-------|------|-----------|----------|
 | `SessionStart` | Session starts (startup/resume/clear) | No | **Load context, warmup** |
+| `SessionEnd` | Session ends (explicit or timeout) | No | **Session summarization** |
 | `PreToolUse` | Before tool execution | Yes | Validate, block dangerous ops |
 | `PostToolUse` | After tool completion | No | Format, lint, log |
 | `Notification` | On notifications | No | Custom alerts |
-| `Stop` | Agent stops/completes | No | **Session summarization** |
+| `Stop` | Agent stops/completes (legacy) | No | Prefer SessionEnd |
 | `UserPromptSubmit` | User submits prompt | No | Inject per-message context |
 | `PermissionRequest` | Permission dialog shown | Yes | Auto-approve/deny |
 
 ### Configuration
 
 ```json
-// ~/.claude/settings.json or .claude/settings.json
+// .claude/settings.local.json (created by glee init claude)
 {
   "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "glee summarize-session --background"
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "glee warmup"
+            "command": "glee warmup-session 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "glee summarize-session --from=claude 2>/dev/null || true"
           }
         ]
       }
@@ -73,7 +74,7 @@ A comprehensive comparison of hook systems across AI coding agents. This informs
 ### Key for Glee
 
 - `SessionStart`: Inject warmup context when session starts
-- `Stop`: Trigger session summarization
+- `SessionEnd`: Trigger session summarization (receives session_id via stdin JSON)
 - stdout from hooks is injected into context (perfect for warmup)
 
 ---
@@ -178,7 +179,7 @@ Permission hooks return:
           {
             "name": "glee-warmup",
             "type": "command",
-            "command": "glee warmup",
+            "command": "glee warmup-session 2>/dev/null || true",
             "timeout": 30000
           }
         ]
@@ -191,7 +192,7 @@ Permission hooks return:
           {
             "name": "glee-summarize-session",
             "type": "command",
-            "command": "glee summarize-session --background"
+            "command": "glee summarize-session --from=gemini 2>/dev/null || true"
           }
         ]
       }
@@ -210,7 +211,7 @@ Permission hooks return:
 ### Key for Glee
 
 - `SessionStart`: Perfect for warmup injection
-- `SessionEnd`: Perfect for session summarization
+- `SessionEnd`: Perfect for session summarization (same as Claude Code)
 - Most explicit session lifecycle hooks of all agents
 
 ---
@@ -362,8 +363,8 @@ Persistent guidelines for agent behavior:
 name: Glee Integration
 ---
 
-At the start of each session, use the glee_warmup MCP tool.
-Before ending, use glee_summarize_session to save context.
+Use glee_memory_add to save important decisions and context.
+Use glee_memory_search to find relevant project memories.
 ```
 
 **Locations:**
@@ -394,7 +395,7 @@ For session continuity, Glee needs to hook into:
 
 | Agent | Session Start | Session End |
 |-------|---------------|-------------|
-| Claude Code | `SessionStart` | `Stop` |
+| Claude Code | `SessionStart` | `SessionEnd` |
 | Cursor | `beforeSubmitPrompt` | `stop` |
 | Gemini CLI | `SessionStart` | `SessionEnd` |
 | OpenCode | Plugin event | `session.idle` |
@@ -403,17 +404,22 @@ For session continuity, Glee needs to hook into:
 
 ### Recommended Implementation
 
-1. **`glee warmup`** — CLI command that outputs context to stdout
+1. **`glee warmup-session`** — CLI command that outputs context to stdout
    - Called by session-start hooks
    - Output injected into agent context
 
-2. **`glee summarize-session`** — CLI command that summarizes session
-   - Called by session-end hooks with `--background` flag
-   - Reads git diff, creates session summary in memory
+2. **`glee summarize-session --from=<agent>`** — CLI command that summarizes session
+   - Called by session-end hooks with `--from=claude` flag
+   - Reads session ID and transcript path from stdin (passed by hook)
+   - Uses the specified agent (LLM) to generate structured summary:
+     - `goal`: Main task objective
+     - `decisions`: Decisions made
+     - `open_loops`: Unfinished tasks
+     - `summary`: 2-3 sentence summary
+   - Saves to memory DB, logs to `.glee/stream_logs/`
 
 3. **MCP Tools** — For agents without hooks
-   - `glee_warmup` — Called explicitly or via rules
-   - `glee_summarize_session` — Called explicitly
+   - `glee_memory_*` — Memory tools for context management
 
 ### Hook Installation
 

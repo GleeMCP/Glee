@@ -34,7 +34,7 @@ uv run glee --help
 
 ```bash
 # Initialize project (creates .glee/ and registers MCP server)
-glee init
+glee init claude                  # Use 'claude', 'codex', 'gemini', 'cursor', etc.
 
 # Configure reviewers
 glee config set reviewer.primary codex
@@ -99,8 +99,19 @@ When `glee init` is run, it registers Glee as an MCP server in `.mcp.json`. Clau
 - `glee_review` - Run code review with primary reviewer
 - `glee_config_set` - Set config value (e.g., reviewer.primary)
 - `glee_config_unset` - Unset config value (e.g., reviewer.secondary)
-- `glee_memory_*` - Memory management tools
+- `glee_memory_*` - Memory management tools (add, list, delete, search, overview, stats, bootstrap)
 - `glee_task` - Spawn subagent for a task (V2)
+
+## Session Hooks
+
+When `glee init claude` is run, it registers hooks in `.claude/settings.local.json`:
+
+- **SessionStart**: Runs `glee warmup-session` to inject context (goal, constraints, decisions, changes, open loops)
+- **SessionEnd**: Runs `glee summarize-session --from=claude` to:
+  - Read the session transcript
+  - Use Claude to generate structured summary (goal, decisions, open_loops, summary)
+  - Save to memory DB
+  - Log to `.glee/stream_logs/summarize-session-YYYYMMDD.log`
 
 ## Config Structure
 

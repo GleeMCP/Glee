@@ -62,7 +62,7 @@ brew install glee
 
 ```bash
 # Initialize project
-glee init
+glee init claude                  # Use 'claude', 'codex', 'gemini', 'cursor', etc.
 
 # Set reviewer preferences
 glee config set reviewer.primary codex
@@ -266,7 +266,7 @@ See [docs/workflows.md](workflows.md) and [docs/subagents.md](subagents.md) for 
 
 ```bash
 # Core commands
-glee init                     # Initialize project + register MCP server
+glee init <agent>             # Initialize project + register MCP server
 glee status                   # Show global status + project status
 glee mcp                      # Run MCP server (used by Claude Code)
 
@@ -285,7 +285,7 @@ glee review git:staged        # Review staged changes
 
 # Memory
 glee memory overview                                           # Show project memory
-glee memory ops --action add --category <category> --content <content> # Add to memory
+glee memory add --category <category> --content <content>    # Add to memory
 glee memory search <query>                                     # Search memory
 
 # Logs

@@ -28,46 +28,38 @@ Vibe coding breaks flow when a new session starts. Users re-explain context, re-
 ## Primary Flow (User)
 
 1. Start a new session.
-2. Run `glee_warmup` (or it runs automatically via Claude Code hook).
-3. Get a short, structured summary + next 3 actions.
-4. Ask for deeper context only if needed (`glee_context_pack`).
+2. `glee warmup-session` runs automatically via `SessionStart` hook.
+3. Get a short, structured summary injected into context.
+4. Ask for deeper context only if needed (use memory search).
 
-## MCP + CLI Surface
+## CLI + Hook Surface
 
-### 1) `glee_warmup` (new)
+### 1) `glee warmup-session` (CLI)
 
-Fast, single-shot continuity summary.
+Fast, single-shot continuity summary. Called automatically by `SessionStart` hook.
 
-**Inputs**
-
-- `focus` (optional): short task or question to bias relevance.
-- `max_actions` (optional, default 3)
-- `since` (optional): "last_session" | "24h" | "7d"
-
-**Output (structured text)**
+**Output (structured text, injected into context)**
 
 - Current goal
-- Recent decisions (top 3)
-- Open loops (top 5)
-- Recent changes (files + 1-line summary)
-- Next actions (top 3)
+- Key constraints
+- Recent decisions
+- Open loops
+- Changes since last session
+- Memory overview
 
-### 2) `glee_context_pack` (new)
+### 2) `glee_memory_search` (MCP)
 
-On-demand, deeper context pack. Returns curated snippets only (no full tree).
+On-demand semantic search across memories.
 
 **Inputs**
 
-- `focus` (required): task description
-- `max_files` (optional, default 6)
-- `max_chars` (optional, default 6000)
+- `query` (required): search query
+- `limit` (optional, default 10)
+- `category` (optional): filter by category
 
 **Output**
 
-- Project brief
-- Relevant memory snippets
-- File excerpts for top-N relevant files
-- Notes on where to look next
+- Relevant memory entries ranked by similarity
 
 ### 3) `glee_spotcheck` (new name for fast review)
 
@@ -121,29 +113,25 @@ Use the existing memory store with richer categories + metadata.
 - Cap output size aggressively (hard limit).
 - Avoid LLM summarization unless user asks.
 
-## Suggested Hooks
+## Hooks (Implemented)
 
-- On session start: auto-run `glee_warmup`.
-- On task completion: create a `session_summary` memory entry.
-- On git commit: add `recent_change` memory entry (best-effort).
+- `SessionStart`: auto-run `glee warmup-session` → inject context
+- `SessionEnd`: auto-run `glee summarize-session --from=<agent>` → LLM generates structured summary (goal, decisions, open_loops) → saves to memory
 
-## Implementation Phases
+## Implementation Status
 
-**Phase 0 (MVP, no new deps)**
+**Implemented:**
 
-- Add `glee_warmup` + `glee_context_pack` MCP tools.
-- Add a lightweight summary builder (memory + git).
-- Add `glee_spotcheck` tool name (alias of review with stricter limits).
+- `glee warmup-session` CLI command (called by SessionStart hook)
+- `glee summarize-session --from=<agent>` CLI command (called by SessionEnd hook)
+- LLM-based structured session summarization
+- `glee_memory_*` MCP tools for memory management
+- Semantic search via LanceDB
 
-**Phase 1**
+**Future:**
 
-- Auto-session summaries into memory.
-- Decision/preference capture helper (`glee_memory_add` templates).
-
-**Phase 2**
-
-- Relevance ranking using semantic search + git diff weighting.
-- Background indexing and cache.
+- Relevance ranking using semantic search + git diff weighting
+- Background indexing and cache
 
 ## Success Metrics
 
@@ -153,7 +141,6 @@ Use the existing memory store with richer categories + metadata.
 
 ## Open Questions
 
-- Should `glee_warmup` run automatically for all MCP clients or only Claude Code?
 - Do we want "resume" to be opinionated (suggest next steps), or purely factual?
 - Where should open loops be captured (manual vs inferred)?
 

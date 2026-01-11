@@ -32,22 +32,6 @@ _LOG_LEVEL_ORDER = {
     "emergency": 70,
 }
 
-_MEMORY_CAPTURE_INSTRUCTIONS = """<glee_memory_capture_instructions>
-After completing the task, append a JSON object inside:
-<glee_memory_capture> ... </glee_memory_capture>
-
-Only include keys you are confident about. Use [] for lists. Keep items short.
-Limits: constraints/decisions/open_loops max 5, recent_changes max 20, summary max 800 chars.
-Schema (all keys optional):
-{
-  "goal": "current goal",
-  "constraints": ["constraint 1", "constraint 2"],
-  "decisions": ["decision 1", "decision 2"],
-  "open_loops": ["unfinished task 1", "unfinished task 2"],
-  "recent_changes": ["M path/file.py", "A path/new.ts"],
-  "summary": "short session summary"
-}
-</glee_memory_capture_instructions>"""
 
 
 @server.list_tools()
@@ -60,29 +44,6 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {},
-                "required": [],
-            },
-        ),
-        Tool(
-            name="glee_warmup",
-            description="Return session warmup context (goal, constraints, decisions, changes, open loops, and memory).",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        ),
-        Tool(
-            name="glee_summarize_session",
-            description="Summarize the session and store it in memory.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "summary": {
-                        "type": "string",
-                        "description": "Short session summary (optional).",
-                    },
-                },
                 "required": [],
             },
         ),
@@ -204,66 +165,6 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="glee_memory_capture",
-            description="Capture structured session memory: goal, constraints, decisions, open loops, and recent changes. Intended for warmup continuity.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "goal": {"type": "string", "description": "Current goal for the project or session."},
-                    "current_goal": {"type": "string", "description": "Alias for goal."},
-                    "objective": {"type": "string", "description": "Alias for goal."},
-                    "constraints": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Key constraints to keep in mind (max 5).",
-                    },
-                    "key_constraints": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Alias for constraints.",
-                    },
-                    "decisions": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Recent decisions to remember (max 5).",
-                    },
-                    "recent_decisions": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Alias for decisions.",
-                    },
-                    "open_loops": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Unfinished tasks or blockers (max 5).",
-                    },
-                    "recent_changes": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Notable changes since last session (max 20).",
-                    },
-                    "changes": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Alias for recent_changes.",
-                    },
-                    "summary": {
-                        "type": "string",
-                        "description": "Short session summary (max 800 chars).",
-                    },
-                    "session_summary": {
-                        "type": "string",
-                        "description": "Alias for summary.",
-                    },
-                    "git_base": {
-                        "type": "string",
-                        "description": "Git base commit or ref used for change tracking.",
-                    },
-                },
-                "required": [],
-            },
-        ),
-        Tool(
             name="glee_memory_search",
             description="Search project memories by semantic similarity. Returns relevant memories based on the query meaning, not just keywords.",
             inputSchema={
@@ -336,11 +237,6 @@ async def list_tools() -> list[Tool]:
                         "description": "Run a CLI directly (codex, claude, gemini). Ignored when agent_name is set.",
                         "enum": ["codex", "claude", "gemini"],
                     },
-                    "background": {
-                        "type": "boolean",
-                        "description": "Run in background (default: false)",
-                        "default": False,
-                    },
                     "session_id": {
                         "type": "string",
                         "description": "Resume an existing session by ID",
@@ -359,10 +255,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return await _handle_status()
     elif name == "glee_review":
         return await _handle_review(arguments)
-    elif name == "glee_warmup":
-        return await _handle_warmup()
-    elif name == "glee_summarize_session":
-        return await _handle_summarize_session(arguments)
     elif name == "glee_config_set":
         return await _handle_config_set(arguments)
     elif name == "glee_config_unset":
@@ -373,8 +265,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return await _handle_memory_list(arguments)
     elif name == "glee_memory_delete":
         return await _handle_memory_delete(arguments)
-    elif name == "glee_memory_capture":
-        return await _handle_memory_capture(arguments)
     elif name == "glee_memory_search":
         return await _handle_memory_search(arguments)
     elif name == "glee_memory_overview":
@@ -426,52 +316,6 @@ async def _handle_status() -> list[TextContent]:
             lines.append(f"  Secondary: {reviewers.get('secondary')}")
         else:
             lines.append("  Secondary: (not set)")
-
-    return [TextContent(type="text", text="\n".join(lines))]
-
-
-async def _handle_warmup() -> list[TextContent]:
-    """Handle glee_warmup tool call."""
-    from glee.config import get_project_config
-    from glee.warmup import build_warmup_text
-
-    config = get_project_config()
-    if not config:
-        return [TextContent(type="text", text="Project not initialized. Run 'glee init' first.")]
-
-    project_path = Path(config.get("project", {}).get("path", "."))
-    text = build_warmup_text(project_path)
-    if not text:
-        return [TextContent(type="text", text="No warmup context available.")]
-    return [TextContent(type="text", text=text)]
-
-
-async def _handle_summarize_session(arguments: dict[str, Any]) -> list[TextContent]:
-    """Handle glee_summarize_session tool call."""
-    from glee.config import get_project_config
-    from glee.session_summary import summarize_session
-
-    config = get_project_config()
-    if not config:
-        return [TextContent(type="text", text="Project not initialized. Run 'glee init' first.")]
-
-    project_path = Path(config.get("project", {}).get("path", "."))
-    summary: str | None = arguments.get("summary")
-    result = summarize_session(project_path, summary=summary)
-    added = result.get("added", {})
-    cleared = result.get("cleared", {})
-
-    lines = ["Session summary stored", "=" * 30]
-    if cleared:
-        lines.append("Cleared:")
-        for cat, count in sorted(cleared.items()):
-            lines.append(f"  {cat}: {count}")
-    if added:
-        lines.append("Added:")
-        for cat, count in sorted(added.items()):
-            lines.append(f"  {cat}: {count}")
-    if not added and not cleared:
-        lines.append("No entries captured.")
 
     return [TextContent(type="text", text="\n".join(lines))]
 
@@ -769,39 +613,6 @@ async def _handle_memory_delete(arguments: dict[str, Any]) -> list[TextContent]:
         memory.close()
 
 
-async def _handle_memory_capture(arguments: dict[str, Any]) -> list[TextContent]:
-    """Handle glee_memory_capture tool call."""
-    from glee.config import get_project_config
-    from glee.memory.capture import capture_memory
-
-    config = get_project_config()
-    if not config:
-        return [TextContent(type="text", text="Project not initialized. Run 'glee init' first.")]
-
-    try:
-        project_path = config.get("project", {}).get("path", ".")
-        result = capture_memory(project_path, arguments, source="mcp")
-        added = result.get("added", {})
-        cleared = result.get("cleared", {})
-
-        lines = ["Captured memory summary", "=" * 30]
-        if cleared:
-            lines.append("Cleared:")
-            for cat, count in sorted(cleared.items()):
-                lines.append(f"  {cat}: {count}")
-        if added:
-            lines.append("Added:")
-            for cat, count in sorted(added.items()):
-                lines.append(f"  {cat}: {count}")
-
-        if not added and not cleared:
-            lines.append("No entries captured.")
-
-        return [TextContent(type="text", text="\n".join(lines))]
-    except Exception as e:
-        return [TextContent(type="text", text=f"Error capturing memory: {e}")]
-
-
 async def _handle_memory_search(arguments: dict[str, Any]) -> list[TextContent]:
     """Handle glee_memory_search tool call."""
     from glee.config import get_project_config
@@ -1066,7 +877,6 @@ async def _handle_task(arguments: dict[str, Any]) -> list[TextContent]:
     prompt: str = arguments.get("prompt", "")
     agent_name_arg: str | None = arguments.get("agent_name")
     agent_cli_arg: str | None = arguments.get("agent_cli")
-    background: bool = arguments.get("background", False)
     session_id_arg: str | None = arguments.get("session_id")
 
     if not description or not prompt:
@@ -1102,7 +912,7 @@ async def _handle_task(arguments: dict[str, Any]) -> list[TextContent]:
 
         # Use subagent's preferred CLI, or auto-select if not specified
         if subagent.get("agent"):
-            agent_cli = subagent["agent"]  # type: ignore[assignment]
+            agent_cli = subagent["agent"]  # type: ignore[assignment, reportTypedDictNotRequiredAccess]
         else:
             agent_cli = _select_agent(prompt)
 
@@ -1164,14 +974,9 @@ async def _handle_task(arguments: dict[str, Any]) -> list[TextContent]:
     # If using a subagent, use the rendered subagent prompt; otherwise use regular prompt
     effective_prompt = subagent_prompt if subagent_prompt else prompt
     full_prompt = _build_task_prompt(project_path, session, effective_prompt)
-    full_prompt = f"{full_prompt}\n\n{_MEMORY_CAPTURE_INSTRUCTIONS}"
 
     # Run agent
     start_time = time.time()
-
-    # TODO: Implement background execution
-    if background:
-        return [TextContent(type="text", text="Background execution not yet implemented.")]
 
     # Get running event loop for thread-safe async calls
     loop = asyncio.get_running_loop()
