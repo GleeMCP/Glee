@@ -191,14 +191,14 @@ def register_session_hook(project_path: str) -> bool:
 
     # Register session summary hook (SessionEnd)
     # Note: Read stdin first (blocking), then background the processing
-    # This allows Claude Code to exit while glee processes the summary
+    # Use here-string (<<<) for reliable data passing with special characters
     if not has_hook_command("SessionEnd", "glee summarize-session"):
         session_end_hook: dict[str, Any] = {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": "input=$(cat) && (echo \"$input\" | glee summarize-session --from=claude 2>/dev/null || true) &",
+                    "command": "input=$(cat) && (glee summarize-session --from=claude <<< \"$input\" 2>/dev/null || true) &",
                 }
             ],
         }
@@ -215,7 +215,7 @@ def register_session_hook(project_path: str) -> bool:
             "hooks": [
                 {
                     "type": "command",
-                    "command": "input=$(cat) && (echo \"$input\" | glee summarize-session --from=claude 2>/dev/null || true) &",
+                    "command": "input=$(cat) && (glee summarize-session --from=claude <<< \"$input\" 2>/dev/null || true) &",
                 }
             ],
         }
