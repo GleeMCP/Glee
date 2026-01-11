@@ -190,13 +190,14 @@ def register_session_hook(project_path: str) -> bool:
         updated = True
 
     # Register session summary hook (SessionEnd)
+    # Note: Run in background (&) so it doesn't block Claude Code from exiting
     if not has_hook_command("SessionEnd", "glee summarize-session"):
         session_end_hook: dict[str, Any] = {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": "glee summarize-session --from=claude 2>/dev/null || true",
+                    "command": "(glee summarize-session --from=claude 2>/dev/null || true) &",
                 }
             ],
         }
@@ -206,13 +207,14 @@ def register_session_hook(project_path: str) -> bool:
         updated = True
 
     # Register pre-compact hook (PreCompact) - capture context before compaction
+    # Note: Run in background (&) so it doesn't block Claude Code
     if not has_hook_command("PreCompact", "glee summarize-session"):
         pre_compact_hook: dict[str, Any] = {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": "glee summarize-session --from=claude 2>/dev/null || true",
+                    "command": "(glee summarize-session --from=claude 2>/dev/null || true) &",
                 }
             ],
         }
