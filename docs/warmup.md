@@ -15,7 +15,7 @@ Vibe coding breaks flow when a new session starts. Users re-explain context, re-
 │                                                                  │
 │  Session Start                          Session End              │
 │  ─────────────                          ───────────              │
-│  UserPromptSubmit hook                  Stop hook                │
+│  SessionStart hook                      Stop hook                │
 │         │                                    │                   │
 │         ▼                                    ▼                   │
 │  ┌──────────────┐                    ┌───────────────┐          │
@@ -144,7 +144,7 @@ Implement session continuity for vibe coding
 // .claude/settings.json
 {
   "hooks": {
-    "UserPromptSubmit": [{
+    "SessionStart": [{
       "matcher": "",
       "hooks": [{ "type": "command", "command": "glee warmup" }]
     }],

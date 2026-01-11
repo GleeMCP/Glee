@@ -23,11 +23,12 @@ A comprehensive comparison of hook systems across AI coding agents. This informs
 
 | Event | When | Can Block | Use Case |
 |-------|------|-----------|----------|
+| `SessionStart` | Session starts (startup/resume/clear) | No | **Load context, warmup** |
 | `PreToolUse` | Before tool execution | Yes | Validate, block dangerous ops |
 | `PostToolUse` | After tool completion | No | Format, lint, log |
 | `Notification` | On notifications | No | Custom alerts |
 | `Stop` | Agent stops/completes | No | **Session summarization** |
-| `UserPromptSubmit` | User submits prompt | No | Inject context, **warmup** |
+| `UserPromptSubmit` | User submits prompt | No | Inject per-message context |
 | `PermissionRequest` | Permission dialog shown | Yes | Auto-approve/deny |
 
 ### Configuration
@@ -47,7 +48,7 @@ A comprehensive comparison of hook systems across AI coding agents. This informs
         ]
       }
     ],
-    "UserPromptSubmit": [
+    "SessionStart": [
       {
         "matcher": "",
         "hooks": [
@@ -66,13 +67,13 @@ A comprehensive comparison of hook systems across AI coding agents. This informs
 
 | Code | Meaning | Behavior |
 |------|---------|----------|
-| 0 | Success | stdout shown to user (or injected for UserPromptSubmit) |
+| 0 | Success | stdout shown to user (or injected for SessionStart/UserPromptSubmit) |
 | 2 | Blocking error | stderr fed back to Claude for processing |
 
 ### Key for Glee
 
-- `UserPromptSubmit`: Inject warmup context at session start
-- `Stop`: Trigger background session summarization
+- `SessionStart`: Inject warmup context when session starts
+- `Stop`: Trigger session summarization
 - stdout from hooks is injected into context (perfect for warmup)
 
 ---
@@ -393,7 +394,7 @@ For session continuity, Glee needs to hook into:
 
 | Agent | Session Start | Session End |
 |-------|---------------|-------------|
-| Claude Code | `UserPromptSubmit` | `Stop` |
+| Claude Code | `SessionStart` | `Stop` |
 | Cursor | `beforeSubmitPrompt` | `stop` |
 | Gemini CLI | `SessionStart` | `SessionEnd` |
 | OpenCode | Plugin event | `session.idle` |

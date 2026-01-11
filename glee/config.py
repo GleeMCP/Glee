@@ -186,20 +186,12 @@ def register_session_hook(project_path: str) -> bool:
                     migrated = True
         return migrated
 
-    # Migrate old SessionStart hooks to UserPromptSubmit
-    if "SessionStart" in hooks_dict:
-        old_hooks = hooks_dict.pop("SessionStart")
-        if "UserPromptSubmit" not in hooks_dict:
-            hooks_dict["UserPromptSubmit"] = []
-        hooks_dict["UserPromptSubmit"].extend(old_hooks)
-        updated = True
-
     # Migrate old "glee memory overview" to "glee warmup"
-    if migrate_hook_command("UserPromptSubmit", "glee memory overview", "glee warmup"):
+    if migrate_hook_command("SessionStart", "glee memory overview", "glee warmup"):
         updated = True
 
-    # Register warmup hook (UserPromptSubmit)
-    if not has_hook_command("UserPromptSubmit", "glee warmup"):
+    # Register warmup hook (SessionStart)
+    if not has_hook_command("SessionStart", "glee warmup"):
         warmup_hook: dict[str, Any] = {
             "matcher": "",
             "hooks": [
@@ -209,9 +201,9 @@ def register_session_hook(project_path: str) -> bool:
                 }
             ],
         }
-        if "UserPromptSubmit" not in hooks_dict:
-            hooks_dict["UserPromptSubmit"] = []
-        hooks_dict["UserPromptSubmit"].append(warmup_hook)
+        if "SessionStart" not in hooks_dict:
+            hooks_dict["SessionStart"] = []
+        hooks_dict["SessionStart"].append(warmup_hook)
         updated = True
 
     # Register session summary hook (Stop)
