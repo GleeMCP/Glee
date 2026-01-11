@@ -29,6 +29,7 @@ class ClaudeAgent(BaseAgent):
             self.command,
             "-p", prompt,
             "--output-format", "text",
+            "--no-session-persistence",  # Prevent hooks from firing for this session
         ]
 
         # Add any additional flags

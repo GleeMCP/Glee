@@ -195,18 +195,15 @@ def register_session_hook(project_path: str) -> bool:
         updated = True
 
     # Register session summary hook (SessionEnd)
-    # Note: Capture stdin to a temp file, then background the processing
+    # Note: Run synchronously to ensure stdin is properly read before exit
+    # This adds ~2-3 seconds to exit time but is more reliable than backgrounding
     if not has_hook_command("SessionEnd", "glee summarize-session"):
         session_end_hook: dict[str, Any] = {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": (
-                        "tmp=$(mktemp) && cat > \"$tmp\" && (nohup "
-                        f"{glee_cmd_quoted} summarize-session --from=claude < \"$tmp\" "
-                        ">/dev/null 2>&1; rm -f \"$tmp\") >/dev/null 2>&1 &"
-                    ),
+                    "command": f"{glee_cmd_quoted} summarize-session --from=claude 2>/dev/null || true",
                 }
             ],
         }
@@ -216,18 +213,14 @@ def register_session_hook(project_path: str) -> bool:
         updated = True
 
     # Register pre-compact hook (PreCompact) - capture context before compaction
-    # Note: Capture stdin to a temp file, then background the processing
+    # Note: Run synchronously to ensure stdin is properly read
     if not has_hook_command("PreCompact", "glee summarize-session"):
         pre_compact_hook: dict[str, Any] = {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": (
-                        "tmp=$(mktemp) && cat > \"$tmp\" && (nohup "
-                        f"{glee_cmd_quoted} summarize-session --from=claude < \"$tmp\" "
-                        ">/dev/null 2>&1; rm -f \"$tmp\") >/dev/null 2>&1 &"
-                    ),
+                    "command": f"{glee_cmd_quoted} summarize-session --from=claude 2>/dev/null || true",
                 }
             ],
         }
