@@ -978,19 +978,10 @@ def _format_relative_time(dt: Any) -> str:
 
 
 def _render_session_summaries(results: list[dict[str, Any]]) -> None:
-    """Render session summaries in a beautiful format."""
-    from rich.markdown import Markdown
+    """Render session summaries in a tree format."""
+    tree = Tree(f"[{Theme.HEADER}]🧠 Sessions[/{Theme.HEADER}]")
 
-    console.print()
-    console.print(Panel(
-        f"[{Theme.MUTED}]Showing {len(results)} session{'s' if len(results) != 1 else ''}[/{Theme.MUTED}]",
-        title=f"[{Theme.HEADER}]🧠 Session Summaries[/{Theme.HEADER}]",
-        border_style=Theme.PRIMARY,
-        padding=(0, 1),
-    ))
-    console.print()
-
-    for i, r in enumerate(results):
+    for r in results:
         created_at = r.get("created_at")
         relative_time = _format_relative_time(created_at)
 
@@ -1008,45 +999,30 @@ def _render_session_summaries(results: list[dict[str, Any]]) -> None:
             metadata = cast(dict[str, Any], metadata_raw)
 
         session_id: str = str(metadata.get("session_id", "") or "")
+
+        # Session branch with ID and time
         if session_id:
-            session_display = f"[{Theme.ACCENT}]{session_id[:12]}[/{Theme.ACCENT}]"
+            session_label = f"[{Theme.ACCENT}]{session_id[:12]}[/{Theme.ACCENT}]  [{Theme.MUTED}]{relative_time}[/{Theme.MUTED}]"
         else:
-            session_display = f"[{Theme.MUTED}]no session id[/{Theme.MUTED}]"
+            session_label = f"[{Theme.MUTED}]{r.get('id', '?')}[/{Theme.MUTED}]  [{Theme.MUTED}]{relative_time}[/{Theme.MUTED}]"
 
-        # Header line with ID, session, and time
-        header = Text()
-        header.append("● ", style=Theme.PRIMARY)
-        header.append(f"{r.get('id', '?')}", style=f"bold {Theme.PRIMARY}")
-        header.append("  ", style="default")
-        header.append(session_display)
-        header.append("  ", style="default")
-        header.append(f"{relative_time}", style=Theme.MUTED)
+        session_branch = tree.add(session_label)
 
-        console.print(header)
-
-        # Content with proper wrapping
+        # Content as child
         content = r.get("content", "").strip()
         if content:
-            # Indent the content
-            console.print(Padding(
-                Markdown(content) if content.startswith("-") or content.startswith("#") else Text(content, style="default"),
-                (0, 0, 0, 4)
-            ))
+            session_branch.add(f"[default]{content}[/default]")
 
-        # Add separator between entries (except last)
-        if i < len(results) - 1:
-            console.print(Padding(
-                Text("─" * 50, style=Theme.MUTED),
-                (1, 0, 1, 2)
-            ))
-
-    console.print()
+    # Use Panel for consistent padding on all sides
+    console.print(Padding(
+        Panel(tree, border_style=Theme.MUTED, padding=(0, 2)),
+        (1, 0, 0, LEFT_PAD)
+    ))
 
 
 @memory_app.command("list")
 def memory_list(
-    category: str | None = typer.Option(None, "--category", "-c", help="Filter by category"),
-    limit: int = typer.Option(50, "--limit", "-l", help="Max results"),
+    full: bool = typer.Option(False, "--full", "-f", help="Show full content"),
 ):
     """List memories."""
     from glee.memory import Memory
@@ -1055,33 +1031,6 @@ def memory_list(
     try:
         memory = Memory(os.getcwd())
 
-        if limit <= 0:
-            limit = 50
-
-        if category:
-            results = memory.get_by_category(category)[:limit]
-            if not results:
-                console.print(f"[{Theme.WARNING}]No memories in category '{category}'[/{Theme.WARNING}]")
-                return
-
-            # Special formatting for session_summary
-            if category == "session_summary":
-                _render_session_summaries(results)
-                return
-
-            title = category.replace("-", " ").replace("_", " ").title()
-            console.print(Panel(
-                f"[{Theme.MUTED}]{len(results)} entries[/{Theme.MUTED}]",
-                title=f"[{Theme.HEADER}]🧠 {title}[/{Theme.HEADER}]",
-                border_style=Theme.PRIMARY
-            ))
-            for r in results:
-                relative_time = _format_relative_time(r.get('created_at'))
-                console.print(f"\n[{Theme.PRIMARY}]●[/{Theme.PRIMARY}] [{Theme.PRIMARY}]{r.get('id')}[/{Theme.PRIMARY}]  [{Theme.MUTED}]{relative_time}[/{Theme.MUTED}]")
-                console.print(Padding(Text(r.get('content', '')), (0, 0, 0, 4)))
-            console.print()
-            return
-
         categories = memory.get_categories()
         if not categories:
             console.print(f"[{Theme.WARNING}]No memories found[/{Theme.WARNING}]")
@@ -1089,14 +1038,79 @@ def memory_list(
 
         memory_tree = Tree(f"[{Theme.HEADER}]🧠 All Memories[/{Theme.HEADER}]")
         for cat in categories:
-            results = memory.get_by_category(cat)[:limit]
+            results = memory.get_by_category(cat)
             title = cat.replace("-", " ").replace("_", " ").title()
-            cat_branch = memory_tree.add(f"[{Theme.ACCENT}]{title}[/{Theme.ACCENT}] [{Theme.MUTED}]({len(results)} entries)[/{Theme.MUTED}]")
+            cat_branch = memory_tree.add(f"[{Theme.ACCENT}]{title}[/{Theme.ACCENT}] [{Theme.MUTED}]({len(results)})[/{Theme.MUTED}]")
             for r in results:
                 mem_id = r.get('id', '')[:8]
-                mem_content = r.get('content', '')[:60]
-                cat_branch.add(f"[{Theme.MUTED}]{mem_id}[/{Theme.MUTED}] {mem_content}...")
+                content = r.get('content', '')
+                if not full and len(content) > 60:
+                    content = content[:60] + "..."
+                cat_branch.add(f"[{Theme.MUTED}]{mem_id}[/{Theme.MUTED}] {content}")
         console.print(padded(memory_tree))
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        if memory is not None:
+            memory.close()
+
+
+@memory_app.command("latest")
+def memory_latest(
+    limit: int = typer.Option(1, "--limit", "-l", help="Number of recent memories to show"),
+):
+    """Show the most recent memory entries.
+
+    Examples:
+        glee memory latest           Show the most recent memory
+        glee memory latest -l 5      Show the 5 most recent memories
+    """
+    from glee.memory import Memory
+
+    memory = None
+    try:
+        memory = Memory(os.getcwd())
+
+        if limit <= 0:
+            limit = 1
+
+        results = memory.get_latest(limit=limit)
+        if not results:
+            console.print(f"[{Theme.WARNING}]No memories found[/{Theme.WARNING}]")
+            return
+
+        # Check if all results are session_summary category
+        if all(r.get("category") == "session_summary" for r in results):
+            _render_session_summaries(results)
+            return
+
+        # Generic rendering for mixed categories
+        console.print()
+        title = "Latest Memory" if limit == 1 else f"Latest {len(results)} Memories"
+        console.print(f"[{Theme.HEADER}]{title}[/{Theme.HEADER}]")
+        console.print()
+
+        for r in results:
+            category = r.get("category", "unknown")
+            relative_time = _format_relative_time(r.get("created_at"))
+
+            header = Text()
+            header.append("● ", style=Theme.PRIMARY)
+            header.append(f"{r.get('id', '?')}", style=f"bold {Theme.PRIMARY}")
+            header.append("  ", style="default")
+            header.append(f"[{category}]", style=Theme.ACCENT)
+            header.append("  ", style="default")
+            header.append(f"{relative_time}", style=Theme.MUTED)
+
+            console.print(header)
+
+            content = r.get("content", "").strip()
+            if content:
+                console.print(Padding(Text(content, style="default"), (0, 0, 1, 4)))
+
     except typer.Exit:
         raise
     except Exception as e:

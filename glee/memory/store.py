@@ -319,6 +319,23 @@ class Memory:
 
         return count
 
+    def get_latest(self, limit: int = 1) -> list[dict[str, Any]]:
+        """Get the most recent memories across all categories.
+
+        Args:
+            limit: Number of recent memories to return (default: 1)
+
+        Returns:
+            List of most recent memory entries
+        """
+        result = self.duck.execute(
+            "SELECT * FROM memories ORDER BY created_at DESC LIMIT ?",
+            [limit],
+        ).fetchall()
+
+        columns = ["id", "category", "content", "metadata", "created_at"]
+        return [dict(zip(columns, row)) for row in result]
+
     def stats(self) -> dict[str, Any]:
         """Get memory statistics.
 
