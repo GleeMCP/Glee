@@ -27,15 +27,15 @@ import httpx
 if TYPE_CHECKING:
     pass
 
-# OpenAI OAuth configuration (from opencode)
+# OpenAI OAuth configuration (from opencode/codex)
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 ISSUER = "https://auth.openai.com"
 CALLBACK_PORT = 1455
-CALLBACK_PATH = "/callback"
+CALLBACK_PATH = "/auth/callback"
 REDIRECT_URI = f"http://localhost:{CALLBACK_PORT}{CALLBACK_PATH}"
 
 # OAuth endpoints
-AUTHORIZE_URL = f"{ISSUER}/authorize"
+AUTHORIZE_URL = f"{ISSUER}/oauth/authorize"
 TOKEN_URL = f"{ISSUER}/oauth/token"
 
 
@@ -76,13 +76,17 @@ def generate_pkce() -> PKCECodes:
 def build_authorize_url(pkce: PKCECodes, state: str) -> str:
     """Build the authorization URL for the OAuth flow."""
     params = {
+        "response_type": "code",
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
-        "response_type": "code",
         "scope": "openid profile email offline_access",
         "code_challenge": pkce.challenge,
         "code_challenge_method": "S256",
         "state": state,
+        # Required for Codex OAuth flow
+        "id_token_add_organizations": "true",
+        "codex_cli_simplified_flow": "true",
+        "originator": "codex_cli_rs",
     }
     return f"{AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
 
@@ -305,14 +309,17 @@ class OAuthCallbackServer:
         # Allow port reuse
         socketserver.TCPServer.allow_reuse_address = True
 
-        self.server = socketserver.TCPServer(("", CALLBACK_PORT), OAuthCallbackHandler)
+        # Bind to localhost only (127.0.0.1)
+        self.server = socketserver.TCPServer(("127.0.0.1", CALLBACK_PORT), OAuthCallbackHandler)
         self.thread = threading.Thread(target=self._serve, daemon=True)
         self.thread.start()
 
     def _serve(self) -> None:
-        """Serve requests."""
+        """Serve requests until we get the callback."""
         if self.server:
-            self.server.handle_request()
+            # Keep serving until we get the auth code or error
+            while not OAuthCallbackHandler.auth_code and not OAuthCallbackHandler.error:
+                self.server.handle_request()
 
     def wait_for_callback(self, timeout: float = 300) -> tuple[str | None, str | None]:
         """Wait for the OAuth callback.
@@ -331,7 +338,10 @@ class OAuthCallbackServer:
     def stop(self) -> None:
         """Stop the callback server."""
         if self.server:
-            self.server.shutdown()
+            try:
+                self.server.server_close()
+            except Exception:
+                pass
             self.server = None
 
 
@@ -344,8 +354,8 @@ async def authenticate() -> tuple[TokenResponse | None, str | None]:
     # Generate PKCE codes
     pkce = generate_pkce()
 
-    # Generate state for CSRF protection
-    state = secrets.token_urlsafe(16)
+    # Generate state for CSRF protection (hex like opencode)
+    state = secrets.token_hex(16)
 
     # Build authorization URL
     auth_url = build_authorize_url(pkce, state)
