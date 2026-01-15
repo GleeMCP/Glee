@@ -13,8 +13,12 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def parse_time(value: str | None) -> datetime | None:
-    """Parse an ISO format timestamp string."""
+def parse_time(value: str | datetime | None) -> datetime | None:
+    """Parse a timestamp value (string or datetime)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
     if not value:
         return None
     try:

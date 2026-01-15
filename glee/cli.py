@@ -1247,7 +1247,9 @@ def memory_overview(
                 console.print("[yellow]Stale - run: glee memory overview --generate[/yellow]")
             console.print()
 
-        console.print(content)
+        from rich.markdown import Markdown
+
+        console.print(Markdown(content))
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
