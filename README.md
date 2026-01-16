@@ -21,6 +21,8 @@ glee init claude
 
 ## Tools
 
+> See [Full MCP Service List](docs/GleeMcpServiceList.md) for all 44 tools (10 implemented, 34 planned).
+
 ### Memory
 
 Persistent project memory that survives across sessions.
