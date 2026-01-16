@@ -1972,7 +1972,7 @@ def connect_test(
                     resp = httpx.post(
                         "https://api.githubcopilot.com/chat/completions",
                         headers=headers,
-                        json={"model": "gpt-5-nano", "max_tokens": 100, "messages": [{"role": "user", "content": "Say Hello"}]},
+                        json={"model": "gpt-4o", "max_tokens": 100, "messages": [{"role": "user", "content": "Say Hello"}]},
                         timeout=30,
                     )
                     resp.raise_for_status()
