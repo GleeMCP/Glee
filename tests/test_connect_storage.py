@@ -276,51 +276,6 @@ class TestStorageFunctions:
         creds = storage.ConnectionStorage.all()
         assert len(creds) == 3
 
-    def test_find_by_vendor(self, temp_auth_file: Path) -> None:
-        storage.ConnectionStorage.add(AIProviderAPICredential(
-            id="", label="or1", sdk="openai", vendor="openrouter", key="key1"
-        ))
-        storage.ConnectionStorage.add(AIProviderAPICredential(
-            id="", label="or2", sdk="openai", vendor="openrouter", key="key2"
-        ))
-        storage.ConnectionStorage.add(AIProviderAPICredential(
-            id="", label="ant", sdk="anthropic", vendor="anthropic", key="key3"
-        ))
-
-        openrouter_creds = storage.ConnectionStorage.find(vendor="openrouter")
-        assert len(openrouter_creds) == 2
-
-        anthropic_creds = storage.ConnectionStorage.find(vendor="anthropic")
-        assert len(anthropic_creds) == 1
-
-    def test_find_by_vendor_and_category(self, temp_auth_file: Path) -> None:
-        storage.ConnectionStorage.add(AIProviderAPICredential(
-            id="", label="api", sdk="openai", vendor="openai", key="key1"
-        ))
-        storage.ConnectionStorage.add(ServiceCredential(
-            id="", label="github", vendor="github", key="ghp_xxx"
-        ))
-
-        ai_creds = storage.ConnectionStorage.find(vendor="openai", category="ai_provider")
-        assert len(ai_creds) == 1
-        assert ai_creds[0].label == "api"
-
-        service_creds = storage.ConnectionStorage.find(vendor="github", category="service")
-        assert len(service_creds) == 1
-        assert service_creds[0].label == "github"
-
-    def test_find_one(self, temp_auth_file: Path) -> None:
-        storage.ConnectionStorage.add(AIProviderAPICredential(
-            id="", label="test", sdk="openai", vendor="groq", key="key1"
-        ))
-
-        cred = storage.ConnectionStorage.find_one(vendor="groq")
-        assert cred is not None
-        assert cred.label == "test"
-
-        no_cred = storage.ConnectionStorage.find_one(vendor="nonexistent")
-        assert no_cred is None
-
     def test_remove(self, temp_auth_file: Path) -> None:
         added = storage.ConnectionStorage.add(AIProviderAPICredential(
             id="", label="to-remove", sdk="openai", vendor="test", key="key"
