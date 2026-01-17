@@ -39,7 +39,7 @@ Get a second opinion from another AI.
 
 | Tool          | Description                               |
 | ------------- | ----------------------------------------- |
-| `glee.review` | Review code with configurable AI reviewer |
+| `glee.code_review` | Review code with configurable AI reviewer |
 
 ```bash
 glee review src/api/          # Review a directory

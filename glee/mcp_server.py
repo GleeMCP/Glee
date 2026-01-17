@@ -48,7 +48,7 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="glee.review",
+            name="glee.code_review",
             description="Run code review using the configured reviewer. Returns structured feedback with severity levels (HIGH/MEDIUM/LOW). Present the review findings to the user and let them decide which issues to address. The user controls what feedback to apply.",
             inputSchema={
                 "type": "object",
@@ -241,6 +241,29 @@ async def list_tools() -> list[Tool]:
                 "required": ["description", "prompt"],
             },
         ),
+        Tool(
+            name="glee.code_review.status",
+            description="List pending and completed code reviews. Shows reviews from the open_loop that haven't been acknowledged yet.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        ),
+        Tool(
+            name="glee.code_review.get",
+            description="Get the full content of a code review by its ID. Returns the markdown report.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "review_id": {
+                        "type": "string",
+                        "description": "The review ID (e.g., 'pr-123-20240115-103000')",
+                    },
+                },
+                "required": ["review_id"],
+            },
+        ),
     ]
 
 
@@ -249,7 +272,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Handle tool calls."""
     if name == "glee.status":
         return await _handle_status()
-    elif name == "glee.review":
+    elif name == "glee.code_review":
         return await _handle_review(arguments)
     elif name == "glee.config.set":
         return await _handle_config_set(arguments)
@@ -269,6 +292,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return await _handle_memory_stats()
     elif name == "glee.task":
         return await _handle_task(arguments)
+    elif name == "glee.code_review.status":
+        return await _handle_review_status()
+    elif name == "glee.code_review.get":
+        return await _handle_review_get(arguments)
     else:
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
@@ -1149,6 +1176,92 @@ def _build_task_prompt(
     lines.append(context_prompt)
 
     return "\n".join(lines)
+
+
+async def _handle_review_status() -> list[TextContent]:
+    """Handle glee.code_review.status tool call."""
+    from glee.config import get_project_config
+    from glee.memory.store import MemoryStore
+
+    config = get_project_config()
+    if not config:
+        return [TextContent(type="text", text="Error: Project not initialized. Run 'glee init' first.")]
+
+    project_path = config.get("project_path", ".")
+    glee_dir = Path(project_path) / ".glee"
+
+    try:
+        memory = MemoryStore(str(glee_dir))
+        entries = memory.get_by_category("open_loop")
+
+        # Filter to review items only
+        reviews = [
+            e for e in entries
+            if e.get("metadata") and e["metadata"].get("type") == "code_review"
+        ]
+
+        if not reviews:
+            return [TextContent(type="text", text="No pending reviews found.")]
+
+        lines = ["## Pending Reviews\n"]
+        for r in reviews:
+            meta = r.get("metadata", {})
+            content = r.get("content", "")
+            memory_id = r.get("id", "")
+            review_id = meta.get("review_id", "unknown")
+            lines.append(f"- **{review_id}** (memory_id: {memory_id})")
+            lines.append(f"  {content}")
+            if meta.get("html_url"):
+                lines.append(f"  URL: {meta['html_url']}")
+            lines.append("")
+
+        lines.append("\nUse `glee.code_review.get(review_id)` to see full details.")
+        lines.append("Use `glee.open_loop.ack(memory_id)` to acknowledge and close.")
+
+        return [TextContent(type="text", text="\n".join(lines))]
+
+    except Exception as e:
+        logger.exception("Error in review.status")
+        return [TextContent(type="text", text=f"Error: {e}")]
+
+
+async def _handle_review_get(arguments: dict[str, Any]) -> list[TextContent]:
+    """Handle glee.code_review.get tool call."""
+    from glee.config import get_project_config
+    from glee.memory.store import MemoryStore
+
+    review_id = arguments.get("review_id")
+    if not review_id:
+        return [TextContent(type="text", text="Error: review_id is required")]
+
+    config = get_project_config()
+    if not config:
+        return [TextContent(type="text", text="Error: Project not initialized.")]
+
+    project_path = config.get("project_path", ".")
+    glee_dir = Path(project_path) / ".glee"
+
+    # First try to find in open_loop memory
+    try:
+        memory = MemoryStore(str(glee_dir))
+        entries = memory.get_by_category("open_loop")
+        for e in entries:
+            meta = e.get("metadata", {})
+            if meta.get("review_id") == review_id:
+                result_path = meta.get("result_path")
+                if result_path and Path(result_path).exists():
+                    content = Path(result_path).read_text()
+                    return [TextContent(type="text", text=content)]
+    except Exception:
+        pass
+
+    # Fallback: look in .glee/reviews/ directory
+    reviews_dir = glee_dir / "reviews"
+    if reviews_dir.exists():
+        for f in reviews_dir.glob(f"*{review_id}*.md"):
+            return [TextContent(type="text", text=f.read_text())]
+
+    return [TextContent(type="text", text=f"Review not found: {review_id}")]
 
 
 async def run_server():

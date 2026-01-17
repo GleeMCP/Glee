@@ -43,7 +43,7 @@ from typing import Any, Literal
 import yaml
 
 # SDK types
-SDK = Literal["openai", "anthropic", "vertex", "bedrock"]
+SDK = Literal["openai", "anthropic", "vertex", "bedrock", "github"]
 
 # Common vendors with known base URLs (for OpenAI SDK)
 VENDOR_URLS: dict[str, str] = {

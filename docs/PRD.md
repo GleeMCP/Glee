@@ -48,7 +48,7 @@ Glee MCP Server
 - `glee.memory.overview` — Get project summary
 
 ### Code Review
-- `glee.review` — Get a second opinion from another AI
+- `glee.code_review` — Get a second opinion from another AI
 
 ### Session Hooks
 - Automatic context injection at session start

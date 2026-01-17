@@ -27,13 +27,13 @@ Persistent project memory that survives across sessions.
 
 ---
 
-## Code Review — `glee.review`
+## Code Review — `glee.code_review`
 
 Get a second opinion from another AI.
 
 | Tool | Status | Description |
 |------|--------|-------------|
-| `glee.review` | ✅ | Review code with configurable AI reviewer |
+| `glee.code_review` | ✅ | Review code with configurable AI reviewer |
 
 ---
 
@@ -147,7 +147,7 @@ Automatic context management — not MCP tools, but integrated features.
 | Namespace | Implemented | Planned | Total |
 |-----------|-------------|---------|-------|
 | `glee.memory.*` | 6 | 0 | 6 |
-| `glee.review` | 1 | 0 | 1 |
+| `glee.code_review` | 1 | 0 | 1 |
 | `glee.config.*` | 2 | 0 | 2 |
 | `glee.status` | 1 | 0 | 1 |
 | `glee.task` | 1 | 5 | 6 |

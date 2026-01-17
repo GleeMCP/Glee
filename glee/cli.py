@@ -522,16 +522,247 @@ def init(
     console.print(padded(init_tree))
 
 
-@app.command()
-def review(
-    target: str | None = typer.Argument(None, help="What to review: file, directory, 'git:changes', 'git:staged', or description"),
+def _parse_github_target(target: str) -> tuple[str, str | None, str | None, int | None]:
+    """Parse GitHub target string.
+
+    Args:
+        target: Target like 'github:pr#123', 'github:owner/repo#123', 'github:branch/feature'
+
+    Returns:
+        Tuple of (type, owner, repo, number_or_branch)
+        type is 'pr' or 'branch'
+    """
+    import re
+
+    # github:pr#123 or github:owner/repo#123
+    pr_match = re.match(r"github:(?:([^/]+)/([^#]+))?#?(\d+)", target)
+    if pr_match:
+        owner = pr_match.group(1)
+        repo = pr_match.group(2)
+        number = int(pr_match.group(3))
+        return ("pr", owner, repo, number)
+
+    # github:branch/feature
+    branch_match = re.match(r"github:branch/(.+)", target)
+    if branch_match:
+        branch = branch_match.group(1)
+        return ("branch", None, None, branch)  # type: ignore[return-value]
+
+    raise ValueError(f"Invalid GitHub target: {target}")
+
+
+def _get_repo_info() -> tuple[str, str]:
+    """Get owner/repo from git remote."""
+    import re
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise ValueError("Could not get git remote URL")
+
+    url = result.stdout.strip()
+    # Handle SSH: git@github.com:owner/repo.git
+    ssh_match = re.match(r"git@github\.com:([^/]+)/(.+?)(?:\.git)?$", url)
+    if ssh_match:
+        return ssh_match.group(1), ssh_match.group(2)
+
+    # Handle HTTPS: https://github.com/owner/repo.git
+    https_match = re.match(r"https://github\.com/([^/]+)/(.+?)(?:\.git)?$", url)
+    if https_match:
+        return https_match.group(1), https_match.group(2)
+
+    raise ValueError(f"Could not parse GitHub URL: {url}")
+
+
+def _review_github(target: str, focus: str | None, dry_run: bool) -> None:
+    """Handle GitHub PR/branch review."""
+    import asyncio
+    import subprocess
+    import platform
+    from datetime import datetime
+    from pathlib import Path
+
+    from glee.github import GitHubClient, get_token, format_diff_for_review
+    from glee.agents import registry
+    from glee.dispatch import get_primary_reviewer
+
+    # Check GitHub connection
+    token = get_token()
+    if not token:
+        console.print(f"[{Theme.ERROR}]GitHub not connected. Run: glee connect[/{Theme.ERROR}]")
+        raise typer.Exit(1)
+
+    # Parse target
+    try:
+        target_type, owner, repo, number_or_branch = _parse_github_target(target)
+    except ValueError as e:
+        console.print(f"[{Theme.ERROR}]{e}[/{Theme.ERROR}]")
+        raise typer.Exit(1)
+
+    # Get owner/repo from git remote if not specified
+    if not owner or not repo:
+        try:
+            owner, repo = _get_repo_info()
+        except ValueError as e:
+            console.print(f"[{Theme.ERROR}]{e}[/{Theme.ERROR}]")
+            raise typer.Exit(1)
+
+    if target_type == "branch":
+        console.print(f"[{Theme.WARNING}]Branch review not yet implemented[/{Theme.WARNING}]")
+        raise typer.Exit(1)
+
+    # PR review
+    pr_number = number_or_branch
+    console.print(f"[{Theme.INFO}]Fetching PR #{pr_number} from {owner}/{repo}...[/{Theme.INFO}]")
+
+    async def do_review() -> None:
+        async with GitHubClient(token) as gh:
+            # Fetch PR details
+            pr = await gh.get_pr(owner, repo, pr_number)  # type: ignore[arg-type]
+            files = await gh.get_pr_files(owner, repo, pr_number)  # type: ignore[arg-type]
+
+            console.print(f"[{Theme.MUTED}]PR: {pr.title}[/{Theme.MUTED}]")
+            console.print(f"[{Theme.MUTED}]Files changed: {len(files)}[/{Theme.MUTED}]")
+            console.print()
+
+            # Format diff for review
+            diff_content = []
+            for f in files:
+                diff_content.append(format_diff_for_review(f.filename, f.patch))
+
+            full_diff = "\n".join(diff_content)
+
+            # Build review prompt
+            focus_str = f"\nFocus on: {focus}" if focus else ""
+            review_prompt = f"""Review this GitHub PR:
+
+**PR #{pr.number}: {pr.title}**
+Author: {pr.user}
+Branch: {pr.head_ref} → {pr.base_ref}
+{focus_str}
+
+{full_diff}
+
+For each issue found, output in this format:
+[SEVERITY] file:line - description
+
+Where SEVERITY is HIGH, MEDIUM, or LOW.
+End with either APPROVED or NEEDS_CHANGES."""
+
+            # Get reviewer
+            reviewer_cli = get_primary_reviewer()
+            agent = registry.get(reviewer_cli)
+            if not agent:
+                console.print(f"[{Theme.ERROR}]Reviewer {reviewer_cli} not found[/{Theme.ERROR}]")
+                return
+
+            console.print(f"[{Theme.INFO}]Running {reviewer_cli} review...[/{Theme.INFO}]")
+            console.print()
+
+            # Run review (blocking)
+            result = agent.run(review_prompt, stream=True)
+
+            if result.error:
+                console.print(f"[{Theme.ERROR}]Review failed: {result.error}[/{Theme.ERROR}]")
+                return
+
+            review_output = result.output
+
+            # Save report to file
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            report_dir = Path(".glee/reviews")
+            report_dir.mkdir(parents=True, exist_ok=True)
+            report_path = report_dir / f"pr-{pr_number}-{timestamp}.md"
+
+            report_content = f"""# PR Review: #{pr.number} {pr.title}
+
+**URL:** {pr.html_url}
+**Author:** {pr.user}
+**Branch:** {pr.head_ref} → {pr.base_ref}
+**Reviewed:** {datetime.now().isoformat()}
+**Reviewer:** {reviewer_cli}
+
+---
+
+{review_output}
+"""
+            report_path.write_text(report_content)
+            console.print(f"[{Theme.MUTED}]Report saved: {report_path}[/{Theme.MUTED}]")
+
+            # Count issues
+            issues_found = review_output.upper().count("[HIGH]") + review_output.upper().count("[MEDIUM]") + review_output.upper().count("[LOW]")
+
+            # Add to open_loop memory for warmup injection
+            try:
+                from glee.memory.store import MemoryStore
+                memory = MemoryStore(str(Path(".glee")))
+                review_id = f"pr-{pr_number}-{timestamp}"
+                memory.add(
+                    category="open_loop",
+                    content=f"PR #{pr_number} review completed - {issues_found} issues found. Use glee.code_review.get('{review_id}') to see details.",
+                    metadata={
+                        "type": "code_review",
+                        "review_id": review_id,
+                        "pr_number": pr_number,
+                        "result_path": str(report_path),
+                        "issues_found": issues_found,
+                        "html_url": pr.html_url,
+                    },
+                )
+                console.print(f"[{Theme.MUTED}]Added to open_loop for next session[/{Theme.MUTED}]")
+            except Exception as e:
+                logger.warning(f"Failed to add to open_loop: {e}")
+
+            if dry_run:
+                console.print()
+                console.print(f"[{Theme.WARNING}]Dry run - not posting comments[/{Theme.WARNING}]")
+            else:
+                # TODO: Parse review output and post inline comments
+                console.print()
+                console.print(f"[{Theme.MUTED}]Comment posting not yet implemented[/{Theme.MUTED}]")
+
+            # Send notification
+            def notify(title: str, message: str) -> None:
+                if platform.system() == "Darwin":
+                    script = f'display notification "{message}" with title "{title}" sound name "Funk"'
+                    subprocess.run(["osascript", "-e", script], capture_output=True)
+                elif platform.system() == "Linux":
+                    subprocess.run(["notify-send", title, message], capture_output=True)
+
+            notify("✨ Glee", f"✅ PR #{pr_number} Reviewed\n📋 {issues_found} issues found")
+
+    asyncio.run(do_review())
+
+
+@app.command("code-review")
+def code_review(
+    target: str | None = typer.Argument(None, help="What to review: file, directory, 'git:changes', 'git:staged', 'github:pr#123', or description"),
     focus: str | None = typer.Option(None, "--focus", "-f", help="Focus areas (comma-separated: security, performance, etc.)"),
     second_opinion: bool = typer.Option(False, "--second-opinion", "-2", help="Also run secondary reviewer"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be posted without posting (GitHub PRs)"),
 ) -> None:
     """Run code review with configured reviewer.
 
-    By default runs primary reviewer only. Use --second-opinion to also run secondary.
+    Supports local targets (files, directories, git changes) and remote targets (GitHub PRs).
+
+    Examples:
+        glee code-review .                    # Review current directory
+        glee code-review git:changes          # Review uncommitted changes
+        glee code-review github:pr#123        # Review PR and post comments
+        glee code-review github:pr#123 --dry-run  # Preview without posting
     """
+    review_target = target or "."
+
+    # Check if this is a GitHub target
+    if review_target.startswith("github:"):
+        _review_github(review_target, focus, dry_run)
+        return
+
+    # Local review (existing logic)
     from glee.agents import registry
     from glee.agents.base import AgentResult
     from glee.config import get_project_config
@@ -541,8 +772,6 @@ def review(
     if not config:
         console.print("[red]Project not initialized. Run 'glee init' first.[/red]")
         raise typer.Exit(1)
-
-    review_target = target or "."
     focus_list = [f.strip() for f in focus.split(",")] if focus else None
 
     # Get reviewers
@@ -1715,7 +1944,7 @@ def _do_copilot_oauth() -> bool:
 
 @connect_app.callback(invoke_without_command=True)
 def connect_tui(ctx: typer.Context):
-    """Connect AI providers.
+    """Connect AI providers and services.
 
     Examples:
         glee connect          # Interactive setup
@@ -1724,27 +1953,22 @@ def connect_tui(ctx: typer.Context):
     if ctx.invoked_subcommand is not None:
         return
 
-    from rich import box
     from rich.prompt import Prompt
-    from rich.table import Table
 
     from glee.connect import storage
 
-    # Build connection type menu
-    table = Table(show_header=True, header_style=f"bold {Theme.HEADER}", box=box.ROUNDED, title="Connect AI Provider", title_style=f"bold {Theme.PRIMARY}")
-    table.add_column("#", style=f"bold {Theme.PRIMARY}", justify="right")
-    table.add_column("Type", style=Theme.PRIMARY)
-    table.add_column("Description", style=Theme.MUTED)
-
-    table.add_row("1", "Codex", "OpenAI OAuth")
-    table.add_row("2", "Copilot", "GitHub OAuth")
-    table.add_row("3", "OpenAI SDK", "OpenRouter, Groq, Together, etc.")
-    table.add_row("4", "Anthropic", "Direct API (api.anthropic.com)")
-    table.add_row("5", "Vertex AI", "Google Cloud (Claude & Gemini)")
-    table.add_row("6", "Bedrock", "AWS (Claude)")
-
+    # Build connection menu with categories
     console.print()
-    console.print(Padding(table, (0, 2)))
+    console.print(f"  [{Theme.MUTED}]─── AI Providers ───[/{Theme.MUTED}]")
+    console.print(f"    [{Theme.PRIMARY}]1[/{Theme.PRIMARY}]  Codex        [{Theme.MUTED}]· OpenAI OAuth[/{Theme.MUTED}]")
+    console.print(f"    [{Theme.PRIMARY}]2[/{Theme.PRIMARY}]  Copilot      [{Theme.MUTED}]· GitHub OAuth[/{Theme.MUTED}]")
+    console.print(f"    [{Theme.PRIMARY}]3[/{Theme.PRIMARY}]  OpenAI SDK   [{Theme.MUTED}]· OpenRouter, Groq, etc.[/{Theme.MUTED}]")
+    console.print(f"    [{Theme.PRIMARY}]4[/{Theme.PRIMARY}]  Anthropic    [{Theme.MUTED}]· Direct API[/{Theme.MUTED}]")
+    console.print(f"    [{Theme.PRIMARY}]5[/{Theme.PRIMARY}]  Vertex AI    [{Theme.MUTED}]· Google Cloud[/{Theme.MUTED}]")
+    console.print(f"    [{Theme.PRIMARY}]6[/{Theme.PRIMARY}]  Bedrock      [{Theme.MUTED}]· AWS[/{Theme.MUTED}]")
+    console.print()
+    console.print(f"  [{Theme.MUTED}]─── Services ───[/{Theme.MUTED}]")
+    console.print(f"    [{Theme.PRIMARY}]7[/{Theme.PRIMARY}]  GitHub       [{Theme.MUTED}]· PR reviews, API access[/{Theme.MUTED}]")
     console.print()
 
     choice = Prompt.ask(f"  [{Theme.PRIMARY}]Select[/{Theme.PRIMARY}]", show_default=False, default="")
@@ -1756,6 +1980,9 @@ def connect_tui(ctx: typer.Context):
         _do_copilot_oauth()
 
     elif choice == "3":  # OpenAI SDK
+        from rich import box
+        from rich.table import Table
+
         vendors = list(storage.VENDOR_URLS.items())
 
         vendor_table = Table(show_header=True, header_style=f"bold {Theme.HEADER}", box=box.ROUNDED, title="OpenAI-Compatible Providers", title_style=f"bold {Theme.PRIMARY}")
@@ -1839,6 +2066,30 @@ def connect_tui(ctx: typer.Context):
             base_url=region,  # Store region in base_url field
         ))
         console.print(f"  [{Theme.SUCCESS}]✓ {label} saved[/{Theme.SUCCESS}]")
+
+    elif choice == "7":  # GitHub
+        console.print()
+        console.print(f"  [{Theme.MUTED}]GitHub Personal Access Token[/{Theme.MUTED}]")
+        console.print(f"  [{Theme.MUTED}]Create at: https://github.com/settings/tokens[/{Theme.MUTED}]")
+        console.print(f"  [{Theme.MUTED}]Scopes needed: repo, read:org[/{Theme.MUTED}]")
+        console.print()
+        token = Prompt.ask(f"  [{Theme.PRIMARY}]Token[/{Theme.PRIMARY}]", password=True)
+        if token:
+            # Check if already exists
+            existing = storage.ConnectionStorage.find_one("github")
+            credential = storage.APICredential(
+                id=existing.id if existing else "",
+                label="github",
+                sdk="github",
+                vendor="github",
+                key=token,
+                base_url="https://api.github.com",
+            )
+            if existing:
+                storage.ConnectionStorage.update(existing.id, credential)
+            else:
+                storage.ConnectionStorage.add(credential)
+            console.print(f"  [{Theme.SUCCESS}]✓ GitHub connected[/{Theme.SUCCESS}]")
 
 
 @connect_app.command("status")

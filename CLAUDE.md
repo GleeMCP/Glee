@@ -36,7 +36,7 @@ Claude Code
     ↓ MCP Protocol
 Glee MCP Server (glee/mcp_server.py)
     ├── glee.memory.*  — Project memory (LanceDB)
-    ├── glee.review    — Code review
+    ├── glee.code_review    — Code review
     ├── glee.config.*  — Configuration
     └── glee.status    — Project status
 ```
@@ -58,7 +58,7 @@ Glee MCP Server (glee/mcp_server.py)
 | Tool | Description |
 |------|-------------|
 | `glee.status` | Show project status and config |
-| `glee.review` | Run code review with AI reviewer |
+| `glee.code_review` | Run code review with AI reviewer |
 | `glee.config.set` | Set configuration |
 | `glee.config.unset` | Remove configuration |
 | `glee.memory.add` | Add memory entry |
