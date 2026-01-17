@@ -36,7 +36,7 @@ def _do_codex_oauth() -> bool:
         access_token = tokens.api_key if tokens.api_key else tokens.access_token
 
         # Check if we already have a codex credential
-        existing = storage.ConnectionStorage.find_one(vendor="openai", type="oauth")
+        existing = storage.ConnectionStorage.find_one(vendor="openai", category="ai_provider")
 
         credential = storage.OAuthCredential(
             id=existing.id if existing else "",
@@ -85,7 +85,7 @@ def _do_copilot_oauth() -> bool:
             return False
 
         # Check if we already have a copilot credential
-        existing = storage.ConnectionStorage.find_one(vendor="github", type="oauth")
+        existing = storage.ConnectionStorage.find_one(vendor="github", category="ai_provider")
 
         credential = storage.OAuthCredential(
             id=existing.id if existing else "",
@@ -244,8 +244,8 @@ def connect_tui(ctx: typer.Context):
         console.print()
         token = Prompt.ask(f"  [{Theme.PRIMARY}]Token[/{Theme.PRIMARY}]", password=True)
         if token:
-            # Check if already exists
-            existing = storage.ConnectionStorage.find_one("github")
+            # Check if already exists (only service category, not ai_provider like Copilot)
+            existing = storage.ConnectionStorage.find_one("github", category="service")
             credential = storage.APICredential(
                 id=existing.id if existing else "",
                 label="github",
@@ -453,7 +453,8 @@ def connect_github():
     console.print()
     token = Prompt.ask(f"  [{Theme.PRIMARY}]Token[/{Theme.PRIMARY}]", password=True)
     if token:
-        existing = storage.ConnectionStorage.find_one("github")
+        # Check if already exists (only service category, not ai_provider like Copilot)
+        existing = storage.ConnectionStorage.find_one("github", category="service")
         credential = storage.APICredential(
             id=existing.id if existing else "",
             label="github",

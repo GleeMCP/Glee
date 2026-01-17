@@ -46,7 +46,7 @@ from typing import Any, Literal
 import yaml
 
 # SDK types
-SDK = Literal["openai", "anthropic", "vertex", "bedrock", "github"]
+SDK = Literal["openai", "openrouter", "anthropic", "vertex", "bedrock", "github"]
 
 # Category types
 Category = Literal["ai_provider", "service"]
@@ -194,19 +194,19 @@ class ConnectionStorage:
         return None
 
     @classmethod
-    def find(cls, vendor: str, type: Literal["oauth", "api"] | None = None) -> list[Credential]:
-        """Find connections by vendor and optionally type."""
+    def find(cls, vendor: str, category: Category | None = None) -> list[Credential]:
+        """Find connections by vendor and optionally category."""
         result: list[Credential] = []
         for cred in cls.all():
             if cred.vendor == vendor:
-                if type is None or cred.type == type:
+                if category is None or cred.category == category:
                     result.append(cred)
         return result
 
     @classmethod
-    def find_one(cls, vendor: str, type: Literal["oauth", "api"] | None = None) -> Credential | None:
-        """Find first connection matching vendor and optionally type."""
-        matches = cls.find(vendor, type)
+    def find_one(cls, vendor: str, category: Category | None = None) -> Credential | None:
+        """Find first connection matching vendor and optionally category."""
+        matches = cls.find(vendor, category)
         return matches[0] if matches else None
 
     @classmethod
