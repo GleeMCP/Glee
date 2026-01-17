@@ -107,28 +107,12 @@ class ConnectionStorage:
         return result
 
     @classmethod
-    def get(cls, id: str) -> Credential | None:
-        """Get connection by ID."""
+    def get(cls, id_or_label: str) -> Credential | None:
+        """Get connection by ID or label (both are unique)."""
         for cred in cls.all():
-            if cred.id == id:
+            if cred.id == id_or_label or cred.label == id_or_label:
                 return cred
         return None
-
-    @classmethod
-    def find(cls, vendor: str, category: Category | None = None) -> list[Credential]:
-        """Find connections by vendor and optionally category."""
-        result: list[Credential] = []
-        for cred in cls.all():
-            if cred.vendor == vendor:
-                if category is None or cred.category == category:
-                    result.append(cred)
-        return result
-
-    @classmethod
-    def find_one(cls, vendor: str, category: Category | None = None) -> Credential | None:
-        """Find first connection matching vendor and optionally category."""
-        matches = cls.find(vendor, category)
-        return matches[0] if matches else None
 
     @classmethod
     def add(cls, credential: Credential) -> Credential:
@@ -142,11 +126,11 @@ class ConnectionStorage:
         return credential
 
     @classmethod
-    def remove(cls, id: str) -> bool:
-        """Remove connection by ID."""
+    def remove(cls, id_or_label: str) -> bool:
+        """Remove connection by ID or label."""
         data = cls.read()
         original_len = len(data)
-        data = [d for d in data if d.get("id") != id]
+        data = [d for d in data if d.get("id") != id_or_label and d.get("label") != id_or_label]
         if len(data) < original_len:
             cls.write(data)
             return True

@@ -10,7 +10,7 @@ from .theme import Theme, console, padded
 connect_app = typer.Typer(help="Connect AI providers")
 
 
-def _do_codex_oauth() -> bool:
+def _do_codex_oauth(label: str) -> bool:
     """Run Codex OAuth flow. Returns True on success."""
     import asyncio
     import time
@@ -35,12 +35,12 @@ def _do_codex_oauth() -> bool:
         # Use API key if available (from token exchange), otherwise fall back to access_token
         access_token = tokens.api_key if tokens.api_key else tokens.access_token
 
-        # Check if we already have a codex credential
-        existing = storage.ConnectionStorage.find_one(vendor="openai", category="ai_provider")
+        # Check if credential with same label exists
+        existing = storage.ConnectionStorage.get(label)
 
         credential = storage.AIProviderOAuthCredential(
             id=existing.id if existing else "",
-            label="codex",
+            label=label,
             sdk="openai",
             vendor="openai",
             refresh=tokens.refresh_token,
@@ -51,10 +51,11 @@ def _do_codex_oauth() -> bool:
 
         if existing:
             storage.ConnectionStorage.update(existing.id, credential)
+            console.print(f"[{Theme.SUCCESS}]✓ Updated {label}[/{Theme.SUCCESS}]")
         else:
             storage.ConnectionStorage.add(credential)
+            console.print(f"[{Theme.SUCCESS}]✓ Added {label}[/{Theme.SUCCESS}]")
 
-        console.print(f"[{Theme.SUCCESS}]✓ Codex authenticated[/{Theme.SUCCESS}]")
         if account_id:
             console.print(f"  [{Theme.MUTED}]Account:[/{Theme.MUTED}] {account_id}")
         if tokens.api_key:
@@ -66,7 +67,7 @@ def _do_codex_oauth() -> bool:
         return False
 
 
-def _do_copilot_oauth() -> bool:
+def _do_copilot_oauth(label: str) -> bool:
     """Run GitHub Copilot OAuth flow. Returns True on success."""
     import asyncio
 
@@ -84,12 +85,12 @@ def _do_copilot_oauth() -> bool:
             console.print(f"[{Theme.ERROR}]No tokens received[/{Theme.ERROR}]")
             return False
 
-        # Check if we already have a copilot credential
-        existing = storage.ConnectionStorage.find_one(vendor="github", category="ai_provider")
+        # Check if credential with same label exists
+        existing = storage.ConnectionStorage.get(label)
 
         credential = storage.AIProviderOAuthCredential(
             id=existing.id if existing else "",
-            label="copilot",
+            label=label,
             sdk="openai",  # Copilot uses OpenAI-compatible API
             vendor="github",
             refresh=tokens.access_token,  # Same token for both
@@ -99,10 +100,11 @@ def _do_copilot_oauth() -> bool:
 
         if existing:
             storage.ConnectionStorage.update(existing.id, credential)
+            console.print(f"[{Theme.SUCCESS}]✓ Updated {label}[/{Theme.SUCCESS}]")
         else:
             storage.ConnectionStorage.add(credential)
+            console.print(f"[{Theme.SUCCESS}]✓ Added {label}[/{Theme.SUCCESS}]")
 
-        console.print(f"[{Theme.SUCCESS}]✓ GitHub Copilot authenticated[/{Theme.SUCCESS}]")
         return True
 
     except Exception as e:
@@ -141,12 +143,18 @@ def connect_tui(ctx: typer.Context):
     console.print()
 
     choice = Prompt.ask(f"  [{Theme.PRIMARY}]Select[/{Theme.PRIMARY}]", show_default=False, default="")
+    if not choice:
+        return
+
+    label = Prompt.ask(f"  [{Theme.PRIMARY}]Label[/{Theme.PRIMARY}]")
+    if not label:
+        return
 
     if choice == "1":  # Codex OAuth
-        _do_codex_oauth()
+        _do_codex_oauth(label)
 
     elif choice == "2":  # Copilot OAuth
-        _do_copilot_oauth()
+        _do_copilot_oauth(label)
 
     elif choice == "3":  # OpenRouter
         console.print()
@@ -154,10 +162,10 @@ def connect_tui(ctx: typer.Context):
         console.print()
         api_key = Prompt.ask(f"  [{Theme.PRIMARY}]API key[/{Theme.PRIMARY}]", password=True)
         if api_key:
-            existing = storage.ConnectionStorage.find_one("openrouter", category="ai_provider")
+            existing = storage.ConnectionStorage.get(label)
             credential = storage.AIProviderAPICredential(
                 id=existing.id if existing else "",
-                label="openrouter",
+                label=label,
                 sdk="openrouter",
                 vendor="openrouter",
                 key=api_key,
@@ -165,9 +173,10 @@ def connect_tui(ctx: typer.Context):
             )
             if existing:
                 storage.ConnectionStorage.update(existing.id, credential)
+                console.print(f"  [{Theme.SUCCESS}]✓ Updated {label}[/{Theme.SUCCESS}]")
             else:
                 storage.ConnectionStorage.add(credential)
-            console.print(f"  [{Theme.SUCCESS}]✓ OpenRouter connected[/{Theme.SUCCESS}]")
+                console.print(f"  [{Theme.SUCCESS}]✓ Added {label}[/{Theme.SUCCESS}]")
 
     elif choice == "4":  # OpenAI SDK
         from rich import box
@@ -194,32 +203,42 @@ def connect_tui(ctx: typer.Context):
             vendor = ep_choice
             base_url = Prompt.ask(f"  [{Theme.PRIMARY}]Base URL[/{Theme.PRIMARY}]")
 
-        label = Prompt.ask(f"  [{Theme.PRIMARY}]Label[/{Theme.PRIMARY}]", default=vendor)
         api_key = Prompt.ask(f"  [{Theme.PRIMARY}]API key[/{Theme.PRIMARY}]", default="")
 
-        storage.ConnectionStorage.add(storage.AIProviderAPICredential(
-            id="",
+        existing = storage.ConnectionStorage.get(label)
+        credential = storage.AIProviderAPICredential(
+            id=existing.id if existing else "",
             label=label,
             sdk="openai",
             vendor=vendor,
             key=api_key,
             base_url=base_url,
-        ))
-        console.print(f"  [{Theme.SUCCESS}]✓ {label} saved[/{Theme.SUCCESS}]")
+        )
+        if existing:
+            storage.ConnectionStorage.update(existing.id, credential)
+            console.print(f"  [{Theme.SUCCESS}]✓ Updated {label}[/{Theme.SUCCESS}]")
+        else:
+            storage.ConnectionStorage.add(credential)
+            console.print(f"  [{Theme.SUCCESS}]✓ Added {label}[/{Theme.SUCCESS}]")
 
     elif choice == "5":  # Anthropic direct
-        label = Prompt.ask(f"  [{Theme.PRIMARY}]Label[/{Theme.PRIMARY}]", default="anthropic")
         api_key = Prompt.ask(f"  [{Theme.PRIMARY}]API key[/{Theme.PRIMARY}]")
         if api_key:
-            storage.ConnectionStorage.add(storage.AIProviderAPICredential(
-                id="",
+            existing = storage.ConnectionStorage.get(label)
+            credential = storage.AIProviderAPICredential(
+                id=existing.id if existing else "",
                 label=label,
                 sdk="anthropic",
                 vendor="anthropic",
                 key=api_key,
                 base_url="https://api.anthropic.com",
-            ))
-            console.print(f"  [{Theme.SUCCESS}]✓ {label} saved[/{Theme.SUCCESS}]")
+            )
+            if existing:
+                storage.ConnectionStorage.update(existing.id, credential)
+                console.print(f"  [{Theme.SUCCESS}]✓ Updated {label}[/{Theme.SUCCESS}]")
+            else:
+                storage.ConnectionStorage.add(credential)
+                console.print(f"  [{Theme.SUCCESS}]✓ Added {label}[/{Theme.SUCCESS}]")
 
     elif choice == "6":  # Vertex AI
         console.print()
@@ -228,17 +247,22 @@ def connect_tui(ctx: typer.Context):
         console.print()
         project_id = Prompt.ask(f"  [{Theme.PRIMARY}]GCP Project ID[/{Theme.PRIMARY}]")
         region = Prompt.ask(f"  [{Theme.PRIMARY}]Region[/{Theme.PRIMARY}]", default="us-central1")
-        label = Prompt.ask(f"  [{Theme.PRIMARY}]Label[/{Theme.PRIMARY}]", default="vertex")
         if project_id:
-            storage.ConnectionStorage.add(storage.AIProviderAPICredential(
-                id="",
+            existing = storage.ConnectionStorage.get(label)
+            credential = storage.AIProviderAPICredential(
+                id=existing.id if existing else "",
                 label=label,
                 sdk="vertex",
                 vendor="google",
                 key=project_id,  # Store project ID in key field
                 base_url=region,  # Store region in base_url field
-            ))
-            console.print(f"  [{Theme.SUCCESS}]✓ {label} saved[/{Theme.SUCCESS}]")
+            )
+            if existing:
+                storage.ConnectionStorage.update(existing.id, credential)
+                console.print(f"  [{Theme.SUCCESS}]✓ Updated {label}[/{Theme.SUCCESS}]")
+            else:
+                storage.ConnectionStorage.add(credential)
+                console.print(f"  [{Theme.SUCCESS}]✓ Added {label}[/{Theme.SUCCESS}]")
 
     elif choice == "7":  # Bedrock
         console.print()
@@ -246,16 +270,21 @@ def connect_tui(ctx: typer.Context):
         console.print(f"  [{Theme.MUTED}]Configure: aws configure[/{Theme.MUTED}]")
         console.print()
         region = Prompt.ask(f"  [{Theme.PRIMARY}]AWS Region[/{Theme.PRIMARY}]", default="us-east-1")
-        label = Prompt.ask(f"  [{Theme.PRIMARY}]Label[/{Theme.PRIMARY}]", default="bedrock")
-        storage.ConnectionStorage.add(storage.AIProviderAPICredential(
-            id="",
+        existing = storage.ConnectionStorage.get(label)
+        credential = storage.AIProviderAPICredential(
+            id=existing.id if existing else "",
             label=label,
             sdk="bedrock",
             vendor="aws",
             key="",  # Uses AWS credentials from environment
             base_url=region,  # Store region in base_url field
-        ))
-        console.print(f"  [{Theme.SUCCESS}]✓ {label} saved[/{Theme.SUCCESS}]")
+        )
+        if existing:
+            storage.ConnectionStorage.update(existing.id, credential)
+            console.print(f"  [{Theme.SUCCESS}]✓ Updated {label}[/{Theme.SUCCESS}]")
+        else:
+            storage.ConnectionStorage.add(credential)
+            console.print(f"  [{Theme.SUCCESS}]✓ Added {label}[/{Theme.SUCCESS}]")
 
     elif choice == "8":  # GitHub
         console.print()
@@ -269,20 +298,21 @@ def connect_tui(ctx: typer.Context):
             # Show masked confirmation
             masked = token[:4] + "*" * (len(token) - 8) + token[-4:] if len(token) > 8 else "*" * len(token)
             console.print(f"  [{Theme.MUTED}]Token: {masked}[/{Theme.MUTED}]")
-            # Check if already exists (only service category, not ai_provider like Copilot)
-            existing = storage.ConnectionStorage.find_one("github", category="service")
+            # Check if credential with same label exists
+            existing = storage.ConnectionStorage.get(label)
             credential = storage.ServiceCredential(
                 id=existing.id if existing else "",
-                label="github",
+                label=label,
                 vendor="github",
                 key=token,
                 base_url="https://api.github.com",
             )
             if existing:
                 storage.ConnectionStorage.update(existing.id, credential)
+                console.print(f"  [{Theme.SUCCESS}]✓ Updated {label}[/{Theme.SUCCESS}]")
             else:
                 storage.ConnectionStorage.add(credential)
-            console.print(f"  [{Theme.SUCCESS}]✓ GitHub connected[/{Theme.SUCCESS}]")
+                console.print(f"  [{Theme.SUCCESS}]✓ Added {label}[/{Theme.SUCCESS}]")
 
 
 @connect_app.command("status")
@@ -333,17 +363,35 @@ def connect_status():
 
 
 @connect_app.command("list")
-def connect_list():
-    """List all connected providers."""
-    from rich import box
-    from rich.table import Table
+def connect_list(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON for piping"),
+):
+    """List all connected providers.
+
+    Examples:
+        glee connect list
+        glee connect list --json | jq '.[] | .label'
+    """
+    import json
 
     from glee.connect import storage
 
     creds = storage.ConnectionStorage.all()
+
+    if json_output:
+        data = [
+            {"id": c.id, "label": c.label, "type": c.type, "vendor": c.vendor, "sdk": c.sdk}
+            for c in creds
+        ]
+        print(json.dumps(data, indent=2))
+        return
+
     if not creds:
         console.print(padded(f"[{Theme.WARNING}]No providers connected. Run: glee connect[/{Theme.WARNING}]"))
         return
+
+    from rich import box
+    from rich.table import Table
 
     console.print(padded(Text.assemble(
         ("🔑 ", "bold"),
@@ -366,18 +414,19 @@ def connect_list():
 
 @connect_app.command("test")
 def connect_test(
-    id: str | None = typer.Argument(None, help="Credential ID to test (omit to list all)"),
+    id_or_label: str | None = typer.Argument(None, help="Credential ID or label (omit to list all)"),
 ):
     """Test a provider connection.
 
     Examples:
         glee connect test           # List providers to choose from
+        glee connect test codex
         glee connect test a1b2c3d4e5
     """
     from glee.connect import storage
 
     # If no ID provided, show list and prompt
-    if id is None:
+    if id_or_label is None:
         creds = storage.ConnectionStorage.all()
         if not creds:
             console.print(padded(f"[{Theme.WARNING}]No providers connected. Run: glee connect[/{Theme.WARNING}]"))
@@ -386,26 +435,26 @@ def connect_test(
         from rich import box
         from rich.table import Table
 
-        console.print(padded(f"[{Theme.WARNING}]No ID provided. Available providers:[/{Theme.WARNING}]"))
+        console.print(padded(f"[{Theme.WARNING}]No credential specified. Available:[/{Theme.WARNING}]"))
         console.print()
 
         table = Table(show_header=True, header_style=f"bold {Theme.HEADER}", box=box.ROUNDED)
-        table.add_column("ID", style=Theme.MUTED)
         table.add_column("Label", style=Theme.PRIMARY)
+        table.add_column("ID", style=Theme.MUTED)
         table.add_column("Vendor")
         table.add_column("SDK", style=Theme.ACCENT)
 
         for c in creds:
-            table.add_row(c.id, c.label, c.vendor, c.sdk or "-")
+            table.add_row(c.label, c.id, c.vendor, c.sdk or "-")
 
         console.print(Padding(table, (0, 2)))
         console.print()
-        console.print(padded(f"[{Theme.MUTED}]Run: glee connect test <id>[/{Theme.MUTED}]"))
+        console.print(padded(f"[{Theme.MUTED}]Run: glee connect test <label>[/{Theme.MUTED}]"))
         return
 
-    cred = storage.ConnectionStorage.get(id)
+    cred = storage.ConnectionStorage.get(id_or_label)
     if not cred:
-        console.print(padded(f"[{Theme.ERROR}]Credential not found: {id}[/{Theme.ERROR}]"))
+        console.print(padded(f"[{Theme.ERROR}]Credential not found: {id_or_label}[/{Theme.ERROR}]"))
         return
 
     from glee.connect import Connection
@@ -427,49 +476,109 @@ def connect_test(
 
 @connect_app.command("remove")
 def connect_remove(
-    id: str = typer.Argument(..., help="Connection ID to remove"),
+    id_or_label: str = typer.Argument(..., help="Connection ID or label"),
 ):
-    """Remove connection by ID.
+    """Remove connection by ID or label.
 
     Examples:
+        glee connect remove github-work
         glee connect remove a1b2c3d4e5
     """
     from glee.connect import storage
 
-    cred = storage.ConnectionStorage.get(id)
+    cred = storage.ConnectionStorage.get(id_or_label)
     if cred:
-        storage.ConnectionStorage.remove(id)
+        storage.ConnectionStorage.remove(id_or_label)
         console.print(padded(f"[{Theme.SUCCESS}]✓[/{Theme.SUCCESS}] Removed {cred.label} ({cred.id})"))
     else:
-        console.print(padded(f"[{Theme.WARNING}]No credentials found for: {id}[/{Theme.WARNING}]"))
+        console.print(padded(f"[{Theme.WARNING}]No credentials found for: {id_or_label}[/{Theme.WARNING}]"))
+
+
+@connect_app.command("edit")
+def connect_edit(
+    id_or_label: str = typer.Argument(..., help="Connection ID or label"),
+    label: str | None = typer.Option(None, "--label", "-l", help="New label"),
+):
+    """Edit connection properties (e.g., rename label).
+
+    Examples:
+        glee connect edit github --label github-personal
+        glee connect edit a1b2c3d4e5 --label github-work
+    """
+    from rich.prompt import Prompt
+
+    from glee.connect import storage
+
+    cred = storage.ConnectionStorage.get(id_or_label)
+    if not cred:
+        console.print(padded(f"[{Theme.ERROR}]Credential not found: {id_or_label}[/{Theme.ERROR}]"))
+        return
+
+    console.print(padded(f"Editing [{Theme.PRIMARY}]{cred.label}[/{Theme.PRIMARY}] ({cred.id})"))
+
+    # Prompt for new label if not provided
+    if label is None:
+        label = Prompt.ask(f"  [{Theme.PRIMARY}]New label[/{Theme.PRIMARY}]", default=cred.label)
+
+    if label == cred.label:
+        console.print(padded(f"[{Theme.MUTED}]No changes made[/{Theme.MUTED}]"))
+        return
+
+    # Check if new label conflicts with existing
+    existing = storage.ConnectionStorage.get(label)
+    if existing and existing.id != cred.id:
+        console.print(padded(f"[{Theme.ERROR}]Label '{label}' already exists[/{Theme.ERROR}]"))
+        return
+
+    # Update the label
+    cred.label = label
+    storage.ConnectionStorage.update(cred.id, cred)
+    console.print(padded(f"[{Theme.SUCCESS}]✓[/{Theme.SUCCESS}] Renamed to {label}"))
 
 
 @connect_app.command("codex")
-def connect_codex():
+def connect_codex(
+    label: str | None = typer.Option(None, "--label", "-l", help="Label for this credential"),
+):
     """Connect Codex (OpenAI OAuth).
 
     Examples:
         glee connect codex
+        glee connect codex --label codex-work
     """
-    _do_codex_oauth()
+    from rich.prompt import Prompt
+
+    if label is None:
+        label = Prompt.ask(f"  [{Theme.PRIMARY}]Label[/{Theme.PRIMARY}]")
+    _do_codex_oauth(label)
 
 
 @connect_app.command("copilot")
-def connect_copilot():
+def connect_copilot(
+    label: str | None = typer.Option(None, "--label", "-l", help="Label for this credential"),
+):
     """Connect GitHub Copilot (OAuth).
 
     Examples:
         glee connect copilot
+        glee connect copilot --label copilot-work
     """
-    _do_copilot_oauth()
+    from rich.prompt import Prompt
+
+    if label is None:
+        label = Prompt.ask(f"  [{Theme.PRIMARY}]Label[/{Theme.PRIMARY}]")
+    _do_copilot_oauth(label)
 
 
 @connect_app.command("github")
-def connect_github():
+def connect_github(
+    label: str | None = typer.Option(None, "--label", "-l", help="Label for this credential (e.g., github-work)"),
+):
     """Connect GitHub (Personal Access Token).
 
     Examples:
         glee connect github
+        glee connect github --label github-work
     """
     from rich.prompt import Prompt
 
@@ -481,22 +590,28 @@ def connect_github():
     console.print(f"  [{Theme.MUTED}]Classic token scopes: repo, read:org[/{Theme.MUTED}]")
     console.print(f"  [{Theme.MUTED}]Fine-grained: Contents (read/write), Pull requests (read/write)[/{Theme.MUTED}]")
     console.print()
+
+    # Prompt for label if not provided
+    if label is None:
+        label = Prompt.ask(f"  [{Theme.PRIMARY}]Label[/{Theme.PRIMARY}]")
+
     token = Prompt.ask(f"  [{Theme.PRIMARY}]Token[/{Theme.PRIMARY}]", password=True)
     if token:
         # Show masked confirmation
         masked = token[:4] + "*" * (len(token) - 8) + token[-4:] if len(token) > 8 else "*" * len(token)
         console.print(f"  [{Theme.MUTED}]Token: {masked}[/{Theme.MUTED}]")
-        # Check if already exists (only service category, not ai_provider like Copilot)
-        existing = storage.ConnectionStorage.find_one("github", category="service")
+        # Check if credential with same label exists
+        existing = storage.ConnectionStorage.get(label)
         credential = storage.ServiceCredential(
             id=existing.id if existing else "",
-            label="github",
+            label=label,
             vendor="github",
             key=token,
             base_url="https://api.github.com",
         )
         if existing:
             storage.ConnectionStorage.update(existing.id, credential)
+            console.print(f"  [{Theme.SUCCESS}]✓ Updated {label}[/{Theme.SUCCESS}]")
         else:
             storage.ConnectionStorage.add(credential)
-        console.print(f"  [{Theme.SUCCESS}]✓ GitHub connected[/{Theme.SUCCESS}]")
+            console.print(f"  [{Theme.SUCCESS}]✓ Added {label}[/{Theme.SUCCESS}]")

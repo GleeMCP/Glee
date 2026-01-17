@@ -85,7 +85,7 @@ def _review_github(target: str, focus: str | None, dry_run: bool) -> None:
     # Check GitHub connection
     token = get_token()
     if not token:
-        console.print(f"[{Theme.ERROR}]GitHub not connected. Run: glee connect[/{Theme.ERROR}]")
+        console.print(f"[{Theme.ERROR}]GitHub not configured. Run: glee connect github[/{Theme.ERROR}]")
         raise typer.Exit(1)
 
     # Parse target

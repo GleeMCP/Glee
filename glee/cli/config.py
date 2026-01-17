@@ -11,6 +11,7 @@ config_app = typer.Typer(help="Configuration management")
 CONFIG_KEYS = {
     "reviewer.primary": "Primary reviewer CLI (codex, claude, gemini)",
     "reviewer.secondary": "Secondary reviewer CLI for second opinions",
+    "credentials.github": "GitHub credential label to use for this project",
 }
 
 
@@ -24,9 +25,11 @@ def config_set(
     Examples:
         glee config set reviewer.primary codex
         glee config set reviewer.secondary gemini
+        glee config set credentials.github github-work
     """
     from glee.agents import registry
-    from glee.config import get_project_config, set_reviewer
+    from glee.config import get_project_config, set_credential, set_reviewer
+    from glee.connect import storage
 
     config = get_project_config()
     if not config:
@@ -40,7 +43,24 @@ def config_set(
             console.print(f"  {k}: {desc}")
         raise typer.Exit(1)
 
-    if key.startswith("reviewer."):
+    if key.startswith("credentials."):
+        service = key.split(".")[1]  # "github"
+
+        # Validate credential exists
+        cred = storage.ConnectionStorage.get(value)
+        if not cred:
+            console.print(f"[red]Credential not found: {value}[/red]")
+            console.print(f"Run: glee connect list")
+            raise typer.Exit(1)
+
+        try:
+            set_credential(service=service, label=value)
+            console.print(f"[green]Set {key} = {value}[/green]")
+        except ValueError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1)
+
+    elif key.startswith("reviewer."):
         tier = key.split(".")[1]  # "primary" or "secondary"
 
         # Validate command
@@ -70,8 +90,9 @@ def config_unset(
 
     Examples:
         glee config unset reviewer.secondary
+        glee config unset credentials.github
     """
-    from glee.config import clear_reviewer, get_project_config
+    from glee.config import clear_credential, clear_reviewer, get_project_config
 
     config = get_project_config()
     if not config:
@@ -89,6 +110,14 @@ def config_unset(
             console.print(f"[yellow]{key} was not set[/yellow]")
         return
 
+    if key.startswith("credentials."):
+        service = key.split(".")[1]
+        if clear_credential(service=service):
+            console.print(f"[green]Unset {key}[/green]")
+        else:
+            console.print(f"[yellow]{key} was not set[/yellow]")
+        return
+
     console.print(f"[red]Unknown config key: {key}[/red]")
     raise typer.Exit(1)
 
@@ -100,10 +129,11 @@ def config_get(
     """Get configuration value(s).
 
     Examples:
-        glee config get                    Show all config
-        glee config get reviewer.primary   Show specific key
+        glee config get                      Show all config
+        glee config get reviewer.primary     Show specific key
+        glee config get credentials.github   Show GitHub credential
     """
-    from glee.config import get_project_config, get_reviewers
+    from glee.config import get_credentials, get_project_config, get_reviewers
 
     config = get_project_config()
     if not config:
@@ -111,6 +141,7 @@ def config_get(
         raise typer.Exit(1)
 
     reviewers = get_reviewers()
+    credentials = get_credentials()
 
     if key is None:
         # Show all config
@@ -118,7 +149,15 @@ def config_get(
 
         config_tree = Tree(f"[{Theme.HEADER}]⚙️  Configuration[/{Theme.HEADER}]")
 
-        # Autonomy (first)
+        # Credentials
+        creds_branch = config_tree.add(f"[{Theme.INFO}]🔑 Credentials[/{Theme.INFO}]")
+        if credentials:
+            for service, label in credentials.items():
+                creds_branch.add(f"[{Theme.MUTED}]{service}:[/{Theme.MUTED}] [{Theme.PRIMARY}]{label}[/{Theme.PRIMARY}]")
+        else:
+            creds_branch.add(f"[{Theme.MUTED}]github:[/{Theme.MUTED}] [{Theme.MUTED}]auto-detect[/{Theme.MUTED}]")
+
+        # Autonomy
         try:
             autonomy = get_autonomy_config()
             autonomy_branch = config_tree.add(f"[{Theme.INFO}]🤖 Autonomy[/{Theme.INFO}]")
@@ -154,6 +193,13 @@ def config_get(
             console.print(secondary)
         else:
             console.print("[dim](not set)[/dim]")
+    elif key.startswith("credentials."):
+        service = key.split(".")[1]
+        label = credentials.get(service)
+        if label:
+            console.print(label)
+        else:
+            console.print("[dim](auto-detect)[/dim]")
     else:
         console.print(f"[red]Unknown config key: {key}[/red]")
         raise typer.Exit(1)

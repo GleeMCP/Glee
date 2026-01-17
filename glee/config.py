@@ -321,6 +321,10 @@ def save_project_config(config: dict[str, Any], project_path: str | None = None)
         "reviewers": config.get("reviewers", {"primary": "codex"}),
     }
 
+    # Include credentials config if present
+    if "credentials" in config:
+        ordered["credentials"] = config["credentials"]
+
     # Include autonomy config if present
     if "autonomy" in config:
         ordered["autonomy"] = config["autonomy"]
@@ -395,6 +399,73 @@ def clear_reviewer(tier: str = "secondary", project_path: str | None = None) -> 
     if tier in reviewers:
         del reviewers[tier]
         config["reviewers"] = reviewers
+        save_project_config(config, project_path)
+        return True
+    return False
+
+
+# =============================================================================
+# Credentials Configuration
+# =============================================================================
+
+
+def get_credentials(project_path: str | None = None) -> dict[str, str]:
+    """Get configured credentials mapping.
+
+    Returns:
+        Dict mapping service names to credential labels (e.g., {"github": "github-work"})
+    """
+    config = get_project_config(project_path)
+    if not config:
+        return {}
+    return config.get("credentials", {})
+
+
+def set_credential(
+    service: str,
+    label: str,
+    project_path: str | None = None,
+) -> dict[str, str]:
+    """Set a credential mapping for a service.
+
+    Args:
+        service: Service name (e.g., "github")
+        label: Credential label to use
+        project_path: Optional project path
+
+    Returns:
+        Updated credentials config
+    """
+    config = get_project_config(project_path)
+    if not config:
+        raise ValueError("Project not initialized. Run 'glee init' first.")
+
+    credentials = config.get("credentials", {})
+    credentials[service] = label
+    config["credentials"] = credentials
+
+    save_project_config(config, project_path)
+    return credentials
+
+
+def clear_credential(service: str, project_path: str | None = None) -> bool:
+    """Clear a credential mapping.
+
+    Args:
+        service: Service name to clear
+        project_path: Optional project path
+
+    Returns:
+        True if cleared, False if not set
+    """
+    config = get_project_config(project_path)
+    if not config:
+        return False
+
+    credentials = config.get("credentials", {})
+    if service in credentials:
+        del credentials[service]
+        config["credentials"] = credentials
         save_project_config(config, project_path)
         return True
     return False

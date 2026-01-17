@@ -78,7 +78,7 @@ class GitHubClient:
         """Initialize client.
 
         Args:
-            token: GitHub token. If None, gets from glee connect.
+            token: GitHub token. If None, auto-resolves from glee connect.
         """
         self.token = token or require_token()
         self.base_url = "https://api.github.com"
