@@ -18,7 +18,7 @@ Developers shouldn't manage a fleet of MCP servers. They should code.
 One install. Everything works.
 
 ```bash
-uv tool install glee-code --python 3.13
+uv tool install glee --python 3.13
 glee init claude
 # That's it. You're done.
 ```
@@ -64,29 +64,37 @@ Your code stays on your machine. No cloud. No accounts. Just tools.
 ## Current Tools
 
 ### Memory System
+
 Persistent project memory that survives across sessions:
+
 - Store insights, decisions, context
 - Semantic search
 - Automatic session summarization
 
 ### Code Review
+
 Get a second opinion:
+
 - Configurable AI reviewers (Codex, Claude, Gemini)
 - Structured feedback with severity levels
 
 ### Session Hooks
+
 Automatic context management:
+
 - Inject relevant context at session start
 - Summarize and save at session end
 
 ## Roadmap
 
 ### Near-term
+
 - **Agent delegation** — Hand off complex tasks to a background agent
 - **RAG tools** — Cross-project knowledge base
 - **GitHub tools** — PR reviews, issue tracking
 
 ### Future
+
 - **Plugin system** — Let the community build tools
 - **More integrations** — Whatever developers need
 
@@ -98,4 +106,4 @@ And because we couldn't resist the acronym potential.
 
 ---
 
-*Glee: The Essential MCP Toolkit for Developers*
+_Glee: The Essential MCP Toolkit for Developers_

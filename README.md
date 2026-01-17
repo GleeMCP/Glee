@@ -10,7 +10,7 @@ Missing something? [Open an issue](https://github.com/GleeMCP/Glee/issues). We s
 
 ```bash
 # Install
-uv tool install glee-code --python 3.13
+uv tool install glee --python 3.13
 # or: pipx install glee-code
 
 # Initialize (registers MCP server with Claude Code)
@@ -37,8 +37,8 @@ Persistent project memory that survives across sessions.
 
 Get a second opinion from another AI.
 
-| Tool          | Description                               |
-| ------------- | ----------------------------------------- |
+| Tool               | Description                               |
+| ------------------ | ----------------------------------------- |
 | `glee.code_review` | Review code with configurable AI reviewer |
 
 ```bash
