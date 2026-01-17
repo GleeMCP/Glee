@@ -6,6 +6,7 @@ Single file storage: ~/.config/glee/connections.yml
 - id: a1b2c3d4e5
   label: codex
   type: oauth
+  category: ai_provider
   sdk: openai
   vendor: openai
   refresh: "..."
@@ -16,17 +17,19 @@ Single file storage: ~/.config/glee/connections.yml
 - id: f6g7h8i9j0
   label: anthropic
   type: api
+  category: ai_provider
   sdk: anthropic
   vendor: anthropic
   key: "sk-ant-..."
 
 - id: k1l2m3n4o5
-  label: openrouter
+  label: github
   type: api
-  sdk: openai
-  vendor: openrouter
-  base_url: "https://openrouter.ai/api/v1"
-  key: "sk-or-..."
+  category: service
+  sdk: github
+  vendor: github
+  base_url: "https://api.github.com"
+  key: "ghp_..."
 ```
 """
 
@@ -44,6 +47,9 @@ import yaml
 
 # SDK types
 SDK = Literal["openai", "anthropic", "vertex", "bedrock", "github"]
+
+# Category types
+Category = Literal["ai_provider", "service"]
 
 # Common vendors with known base URLs (for OpenAI SDK)
 VENDOR_URLS: dict[str, str] = {
@@ -73,6 +79,7 @@ class OAuthCredential:
     label: str
     sdk: SDK
     vendor: str
+    category: Category = "ai_provider"
     refresh: str = ""
     access: str = ""
     expires: int = 0  # Unix timestamp (milliseconds)
@@ -90,6 +97,7 @@ class OAuthCredential:
             "id": self.id,
             "label": self.label,
             "type": "oauth",
+            "category": self.category,
             "sdk": self.sdk,
             "vendor": self.vendor,
             "refresh": self.refresh,
@@ -107,6 +115,7 @@ class OAuthCredential:
             label=data.get("label", ""),
             sdk=data.get("sdk", "openai"),
             vendor=data.get("vendor", ""),
+            category=data.get("category", "ai_provider"),
             refresh=data.get("refresh", ""),
             access=data.get("access", ""),
             expires=data.get("expires", 0),
@@ -122,6 +131,7 @@ class APICredential:
     label: str
     sdk: SDK
     vendor: str
+    category: Category = "ai_provider"
     key: str = ""
     base_url: str | None = None
     type: Literal["api"] = field(default="api", repr=False)
@@ -131,6 +141,7 @@ class APICredential:
             "id": self.id,
             "label": self.label,
             "type": "api",
+            "category": self.category,
             "sdk": self.sdk,
             "vendor": self.vendor,
             "key": self.key,
@@ -146,6 +157,7 @@ class APICredential:
             label=data.get("label", ""),
             sdk=data.get("sdk", "openai"),
             vendor=data.get("vendor", ""),
+            category=data.get("category", "ai_provider"),
             key=data.get("key", ""),
             base_url=data.get("base_url"),
         )

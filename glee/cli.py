@@ -630,7 +630,7 @@ def _review_github(target: str, focus: str | None, dry_run: bool) -> None:
             console.print()
 
             # Format diff for review
-            diff_content = []
+            diff_content: list[str] = []
             for f in files:
                 diff_content.append(format_diff_for_review(f.filename, f.patch))
 
@@ -698,8 +698,8 @@ End with either APPROVED or NEEDS_CHANGES."""
 
             # Add to open_loop memory for warmup injection
             try:
-                from glee.memory.store import MemoryStore
-                memory = MemoryStore(str(Path(".glee")))
+                from glee.memory.store import Memory
+                memory = Memory(Path.cwd())
                 review_id = f"pr-{pr_number}-{timestamp}"
                 memory.add(
                     category="open_loop",
@@ -2082,6 +2082,7 @@ def connect_tui(ctx: typer.Context):
                 label="github",
                 sdk="github",
                 vendor="github",
+                category="service",
                 key=token,
                 base_url="https://api.github.com",
             )
@@ -2215,108 +2216,24 @@ def connect_test(
         console.print(padded(f"[{Theme.ERROR}]✗[/{Theme.ERROR}] {e}"))
 
 
-@connect_app.command("add")
-def connect_add(
-    vendor: str | None = typer.Argument(None, help="Vendor name (e.g., openrouter, groq, anthropic)"),
-    api_key: str | None = typer.Argument(None, help="API key"),
-    label: str | None = typer.Option(None, "--label", "-l", help="Label for this credential"),
-    sdk: str = typer.Option("openai", "--sdk", "-s", help="SDK type: openai, anthropic, google"),
-    base_url: str | None = typer.Option(None, "--base-url", "-u", help="Base URL (required for unknown vendors)"),
-):
-    """Add an API key provider.
-
-    Known vendors (base URL auto-detected):
-        openrouter, groq, together, fireworks, deepseek, anthropic, google
-
-    Examples:
-        glee connect add openrouter sk-or-xxx
-        glee connect add anthropic sk-ant-xxx
-        glee connect add custom xxx --base-url https://api.example.com/v1
-    """
-    from rich.prompt import Prompt
-
-    from glee.connect import storage
-
-    # If no vendor provided, show available vendors
-    if vendor is None:
-        console.print()
-        console.print(f"  [{Theme.HEADER}]Known Vendors[/{Theme.HEADER}]")
-        for name, url in storage.VENDOR_URLS.items():
-            console.print(f"  [{Theme.PRIMARY}]{name:<12}[/{Theme.PRIMARY}] [{Theme.MUTED}]{url}[/{Theme.MUTED}]")
-        console.print()
-        console.print(f"  [{Theme.MUTED}]For custom vendors, use --base-url[/{Theme.MUTED}]")
-        console.print()
-        console.print(f"  [{Theme.MUTED}]Usage: glee connect add <vendor> <api_key>[/{Theme.MUTED}]")
-        return
-
-    # Auto-detect base_url for known vendors
-    if base_url is None and vendor in storage.VENDOR_URLS:
-        base_url = storage.VENDOR_URLS[vendor]
-
-    # Require base_url for unknown vendors
-    if base_url is None and vendor not in storage.VENDOR_URLS:
-        console.print(padded(f"[{Theme.ERROR}]Unknown vendor: {vendor}[/{Theme.ERROR}]"))
-        console.print(padded(f"[{Theme.MUTED}]Use --base-url to specify the API endpoint[/{Theme.MUTED}]"))
-        console.print(padded(f"[{Theme.MUTED}]Example: glee connect add {vendor} <key> --base-url https://api.example.com/v1[/{Theme.MUTED}]"))
-        return
-
-    # Prompt for API key if not provided
-    if api_key is None:
-        api_key = Prompt.ask(f"  [{Theme.PRIMARY}]API key for {vendor}[/{Theme.PRIMARY}]")
-        if not api_key:
-            console.print(padded(f"[{Theme.ERROR}]API key is required[/{Theme.ERROR}]"))
-            return
-
-    # Auto-detect SDK for known vendors
-    if vendor == "anthropic":
-        sdk = "anthropic"
-    elif vendor == "google":
-        sdk = "google"
-
-    credential = storage.APICredential(
-        id="",
-        label=label or vendor,
-        sdk=sdk,  # type: ignore[arg-type]
-        vendor=vendor,
-        key=api_key,
-        base_url=base_url,
-    )
-    storage.ConnectionStorage.add(credential)
-
-    console.print(padded(Text.assemble(
-        (f"[{Theme.SUCCESS}]✓[/{Theme.SUCCESS}] ", ""),
-        (f"Saved {label or vendor} credentials", ""),
-    )))
-
 
 @connect_app.command("remove")
 def connect_remove(
-    id_or_label: str = typer.Argument(..., help="Provider ID or label to remove"),
+    id: str = typer.Argument(..., help="Connection ID to remove"),
 ):
-    """Remove a provider connection.
+    """Remove connection by ID.
 
     Examples:
         glee connect remove a1b2c3d4e5
-        glee connect remove openrouter
     """
     from glee.connect import storage
 
-    # Try to find by ID first
-    cred = storage.ConnectionStorage.get(id_or_label)
+    cred = storage.ConnectionStorage.get(id)
     if cred:
-        storage.ConnectionStorage.remove(id_or_label)
+        storage.ConnectionStorage.remove(id)
         console.print(padded(f"[{Theme.SUCCESS}]✓[/{Theme.SUCCESS}] Removed {cred.label} ({cred.id})"))
-        return
-
-    # Try to find by label
-    all_creds = storage.ConnectionStorage.all()
-    for c in all_creds:
-        if c.label == id_or_label:
-            storage.ConnectionStorage.remove(c.id)
-            console.print(padded(f"[{Theme.SUCCESS}]✓[/{Theme.SUCCESS}] Removed {c.label} ({c.id})"))
-            return
-
-    console.print(padded(f"[{Theme.WARNING}]No credentials found for: {id_or_label}[/{Theme.WARNING}]"))
+    else:
+        console.print(padded(f"[{Theme.WARNING}]No credentials found for: {id}[/{Theme.WARNING}]"))
 
 
 @connect_app.command("codex")
