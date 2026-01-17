@@ -1,8 +1,11 @@
 """Tests for connection storage module."""
 
+from __future__ import annotations
+
 import os
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -12,12 +15,15 @@ from glee.connect.credential import (
     AIProviderAPICredential,
     AIProviderOAuthCredential,
     ServiceCredential,
-    _generate_id,
 )
+from glee.utils import generate_id
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 @pytest.fixture
-def temp_auth_file():
+def temp_auth_file() -> Generator[Path, None, None]:
     """Create a temporary auth file for testing."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
         temp_path = Path(f.name)
@@ -34,7 +40,7 @@ def temp_auth_file():
 class TestAIProviderAPICredential:
     """Tests for AIProviderAPICredential dataclass."""
 
-    def test_create_api_credential(self):
+    def test_create_api_credential(self) -> None:
         cred = AIProviderAPICredential(
             id="test123",
             label="my-openrouter",
@@ -52,7 +58,7 @@ class TestAIProviderAPICredential:
         assert cred.type == "ai_api"
         assert cred.category == "ai_provider"
 
-    def test_to_dict(self):
+    def test_to_dict(self) -> None:
         cred = AIProviderAPICredential(
             id="test123",
             label="anthropic",
@@ -69,7 +75,7 @@ class TestAIProviderAPICredential:
         assert d["key"] == "sk-ant-xxx"
         assert "base_url" not in d  # None values not included
 
-    def test_from_dict(self):
+    def test_from_dict(self) -> None:
         data = {
             "id": "abc123",
             "label": "groq",
@@ -90,7 +96,7 @@ class TestAIProviderAPICredential:
 class TestAIProviderOAuthCredential:
     """Tests for AIProviderOAuthCredential dataclass."""
 
-    def test_create_oauth_credential(self):
+    def test_create_oauth_credential(self) -> None:
         cred = AIProviderOAuthCredential(
             id="oauth123",
             label="codex",
@@ -112,7 +118,7 @@ class TestAIProviderOAuthCredential:
         assert cred.type == "ai_oauth"
         assert cred.category == "ai_provider"
 
-    def test_is_expired_not_expired(self):
+    def test_is_expired_not_expired(self) -> None:
         import time
 
         future_time = int((time.time() + 3600) * 1000)  # 1 hour from now
@@ -125,7 +131,7 @@ class TestAIProviderOAuthCredential:
         )
         assert not cred.is_expired()
 
-    def test_is_expired_expired(self):
+    def test_is_expired_expired(self) -> None:
         past_time = 1000  # Way in the past
         cred = AIProviderOAuthCredential(
             id="test",
@@ -136,7 +142,7 @@ class TestAIProviderOAuthCredential:
         )
         assert cred.is_expired()
 
-    def test_is_expired_zero_never_expires(self):
+    def test_is_expired_zero_never_expires(self) -> None:
         cred = AIProviderOAuthCredential(
             id="test",
             label="copilot",
@@ -146,7 +152,7 @@ class TestAIProviderOAuthCredential:
         )
         assert not cred.is_expired()
 
-    def test_to_dict(self):
+    def test_to_dict(self) -> None:
         cred = AIProviderOAuthCredential(
             id="oauth123",
             label="codex",
@@ -163,7 +169,7 @@ class TestAIProviderOAuthCredential:
         assert d["refresh"] == "refresh-token"
         assert d["account_id"] == "org-abc"
 
-    def test_from_dict(self):
+    def test_from_dict(self) -> None:
         data = {
             "id": "oauth456",
             "label": "copilot",
@@ -183,7 +189,7 @@ class TestAIProviderOAuthCredential:
 class TestServiceCredential:
     """Tests for ServiceCredential dataclass."""
 
-    def test_create_service_credential(self):
+    def test_create_service_credential(self) -> None:
         cred = ServiceCredential(
             id="svc123",
             label="github",
@@ -200,7 +206,7 @@ class TestServiceCredential:
         assert cred.category == "service"
         assert cred.sdk is None
 
-    def test_to_dict(self):
+    def test_to_dict(self) -> None:
         cred = ServiceCredential(
             id="svc123",
             label="github",
@@ -216,7 +222,7 @@ class TestServiceCredential:
         assert d["base_url"] == "https://api.github.com"
         assert "sdk" not in d  # Services don't have SDK
 
-    def test_from_dict(self):
+    def test_from_dict(self) -> None:
         data = {
             "id": "svc456",
             "label": "github",
@@ -235,7 +241,7 @@ class TestServiceCredential:
 class TestStorageFunctions:
     """Tests for storage CRUD functions."""
 
-    def test_add_and_get(self, temp_auth_file):
+    def test_add_and_get(self, temp_auth_file: Path) -> None:
         cred = AIProviderAPICredential(
             id="",
             label="test-api",
@@ -249,13 +255,14 @@ class TestStorageFunctions:
         retrieved = storage.ConnectionStorage.get(added.id)
         assert retrieved is not None
         assert retrieved.label == "test-api"
+        assert isinstance(retrieved, AIProviderAPICredential)
         assert retrieved.key == "test-key"
 
-    def test_all_empty(self, temp_auth_file):
+    def test_all_empty(self, temp_auth_file: Path) -> None:
         creds = storage.ConnectionStorage.all()
         assert creds == []
 
-    def test_all_multiple(self, temp_auth_file):
+    def test_all_multiple(self, temp_auth_file: Path) -> None:
         storage.ConnectionStorage.add(AIProviderAPICredential(
             id="", label="cred1", sdk="openai", vendor="openrouter", key="key1"
         ))
@@ -269,7 +276,7 @@ class TestStorageFunctions:
         creds = storage.ConnectionStorage.all()
         assert len(creds) == 3
 
-    def test_find_by_vendor(self, temp_auth_file):
+    def test_find_by_vendor(self, temp_auth_file: Path) -> None:
         storage.ConnectionStorage.add(AIProviderAPICredential(
             id="", label="or1", sdk="openai", vendor="openrouter", key="key1"
         ))
@@ -286,7 +293,7 @@ class TestStorageFunctions:
         anthropic_creds = storage.ConnectionStorage.find(vendor="anthropic")
         assert len(anthropic_creds) == 1
 
-    def test_find_by_vendor_and_category(self, temp_auth_file):
+    def test_find_by_vendor_and_category(self, temp_auth_file: Path) -> None:
         storage.ConnectionStorage.add(AIProviderAPICredential(
             id="", label="api", sdk="openai", vendor="openai", key="key1"
         ))
@@ -302,7 +309,7 @@ class TestStorageFunctions:
         assert len(service_creds) == 1
         assert service_creds[0].label == "github"
 
-    def test_find_one(self, temp_auth_file):
+    def test_find_one(self, temp_auth_file: Path) -> None:
         storage.ConnectionStorage.add(AIProviderAPICredential(
             id="", label="test", sdk="openai", vendor="groq", key="key1"
         ))
@@ -314,7 +321,7 @@ class TestStorageFunctions:
         no_cred = storage.ConnectionStorage.find_one(vendor="nonexistent")
         assert no_cred is None
 
-    def test_remove(self, temp_auth_file):
+    def test_remove(self, temp_auth_file: Path) -> None:
         added = storage.ConnectionStorage.add(AIProviderAPICredential(
             id="", label="to-remove", sdk="openai", vendor="test", key="key"
         ))
@@ -323,10 +330,10 @@ class TestStorageFunctions:
         assert storage.ConnectionStorage.remove(added.id) is True
         assert storage.ConnectionStorage.get(added.id) is None
 
-    def test_remove_nonexistent(self, temp_auth_file):
+    def test_remove_nonexistent(self, temp_auth_file: Path) -> None:
         assert storage.ConnectionStorage.remove("nonexistent-id") is False
 
-    def test_update(self, temp_auth_file):
+    def test_update(self, temp_auth_file: Path) -> None:
         added = storage.ConnectionStorage.add(AIProviderAPICredential(
             id="", label="original", sdk="openai", vendor="test", key="old-key"
         ))
@@ -343,9 +350,10 @@ class TestStorageFunctions:
         retrieved = storage.ConnectionStorage.get(added.id)
         assert retrieved is not None
         assert retrieved.label == "updated"
+        assert isinstance(retrieved, AIProviderAPICredential)
         assert retrieved.key == "new-key"
 
-    def test_update_nonexistent(self, temp_auth_file):
+    def test_update_nonexistent(self, temp_auth_file: Path) -> None:
         cred = AIProviderAPICredential(
             id="fake", label="test", sdk="openai", vendor="test", key="key"
         )
@@ -355,30 +363,30 @@ class TestStorageFunctions:
 class TestGenerateId:
     """Tests for ID generation."""
 
-    def test_generate_id_length(self):
-        id1 = _generate_id()
+    def test_generate_id_length(self) -> None:
+        id1 = generate_id()
         assert len(id1) == 10
 
-    def test_generate_id_alphanumeric(self):
-        id1 = _generate_id()
+    def test_generate_id_alphanumeric(self) -> None:
+        id1 = generate_id()
         assert id1.isalnum()
         assert id1.islower() or id1.replace("0123456789", "").islower()
 
-    def test_generate_id_unique(self):
-        ids = [_generate_id() for _ in range(100)]
+    def test_generate_id_unique(self) -> None:
+        ids = [generate_id() for _ in range(100)]
         assert len(set(ids)) == 100  # All unique
 
 
 class TestVendorUrls:
     """Tests for vendor URL constants."""
 
-    def test_known_vendors(self):
+    def test_known_vendors(self) -> None:
         assert "openai" in storage.VENDOR_URLS
         assert "openrouter" in storage.VENDOR_URLS
         assert "groq" in storage.VENDOR_URLS
         assert "anthropic" not in storage.VENDOR_URLS  # Anthropic uses its own SDK
 
-    def test_vendor_urls_format(self):
+    def test_vendor_urls_format(self) -> None:
         for vendor, url in storage.VENDOR_URLS.items():
             assert url.startswith("http")
             assert "/v1" in url or vendor in ("ollama", "lmstudio")
@@ -387,7 +395,7 @@ class TestVendorUrls:
 class TestLegacyParsing:
     """Tests for backwards compatibility with legacy credential formats."""
 
-    def test_parse_legacy_oauth(self, temp_auth_file):
+    def test_parse_legacy_oauth(self) -> None:
         # Legacy oauth format should parse to AIProviderOAuthCredential
         data = {
             "id": "legacy1",
@@ -402,7 +410,7 @@ class TestLegacyParsing:
         assert isinstance(cred, AIProviderOAuthCredential)
         assert cred.label == "codex"
 
-    def test_parse_legacy_api_ai_provider(self, temp_auth_file):
+    def test_parse_legacy_api_ai_provider(self) -> None:
         # Legacy api format with ai_provider category
         data = {
             "id": "legacy2",
@@ -418,7 +426,7 @@ class TestLegacyParsing:
         assert isinstance(cred, AIProviderAPICredential)
         assert cred.label == "anthropic"
 
-    def test_parse_legacy_api_service(self, temp_auth_file):
+    def test_parse_legacy_api_service(self) -> None:
         # Legacy api format with service category
         data = {
             "id": "legacy3",

@@ -12,20 +12,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from glee.utils import generate_id
+
 # SDK types (for AI providers only)
 SDK = Literal["openai", "openrouter", "anthropic", "vertex", "bedrock"]
 
 # Category types
 Category = Literal["ai_provider", "service"]
-
-
-def _generate_id() -> str:
-    """Generate a random alphanumeric ID."""
-    import secrets
-    import string
-
-    chars = string.ascii_lowercase + string.digits
-    return "".join(secrets.choice(chars) for _ in range(10))
 
 
 @dataclass
@@ -70,7 +63,7 @@ class AIProviderOAuthCredential:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AIProviderOAuthCredential:
         return cls(
-            id=data.get("id", _generate_id()),
+            id=data.get("id", generate_id()),
             label=data.get("label", ""),
             sdk=data.get("sdk", "openai"),
             vendor=data.get("vendor", ""),
@@ -113,7 +106,7 @@ class AIProviderAPICredential:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AIProviderAPICredential:
         return cls(
-            id=data.get("id", _generate_id()),
+            id=data.get("id", generate_id()),
             label=data.get("label", ""),
             sdk=data.get("sdk", "openai"),
             vendor=data.get("vendor", ""),
@@ -157,7 +150,7 @@ class ServiceCredential:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ServiceCredential:
         return cls(
-            id=data.get("id", _generate_id()),
+            id=data.get("id", generate_id()),
             label=data.get("label", ""),
             vendor=data.get("vendor", ""),
             key=data.get("key", ""),
