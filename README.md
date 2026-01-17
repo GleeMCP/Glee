@@ -2,7 +2,14 @@
 
 **The Essential MCP Toolkit for Developers**
 
-Don't install 10 different servers. Glee is the battery-included MCP toolkit that gives Claude superpowers: persistent memory, AI code review, session hooks — and soon: Git forensics, DB inspection, and background task delegation.
+Don't install 10 different servers. Glee is the battery-included MCP toolkit that gives Claude superpowers:
+
+- persistent memory
+- AI code review
+- session hooks
+- Git forensics
+- DB inspection
+- background task delegation
 
 Missing something? [Open an issue](https://github.com/GleeMCP/Glee/issues). We ship fast.
 
